@@ -1,0 +1,116 @@
+"use client";
+import React from "react";
+import type { Client } from "@/types";
+import { useTheme } from "@/lib/theme";
+import { fmt } from "@/lib/utils";
+import { VaChip, SPill, Days } from "./ui";
+import InboxPanel from "./InboxPanel";
+import CalendarPanel from "./CalendarPanel";
+import TaskPanel from "./TaskPanel";
+import MeetingDraftPanel from "./MeetingDraftPanel";
+
+export default function Overview({ clients, setModal, onAddNote }: {
+  clients: Client[];
+  setModal: (m: { type: string; id: string }) => void;
+  onAddNote: (clientId: string, text: string) => void;
+}) {
+  const { D } = useTheme();
+
+  const now = new Date();
+  const m30 = new Date(); m30.setDate(m30.getDate() + 30);
+
+  const upcoming = clients.filter((c) => {
+    if (!c.ert) return false;
+    const d = new Date(c.ert + "T00:00:00");
+    return d >= now && d <= m30;
+  }).sort((a, b) => new Date(a.ert).getTime() - new Date(b.ert).getTime());
+
+  const th: React.CSSProperties = {
+    fontSize: 11, color: D.muted, fontWeight: 600, textTransform: "uppercase",
+    letterSpacing: "0.05em", padding: "8px 10px", textAlign: "left",
+    borderBottom: `1px solid ${D.border}`, whiteSpace: "nowrap", background: D.bg3,
+  };
+  const td: React.CSSProperties = { padding: "9px 10px", borderBottom: `1px solid ${D.border}`, verticalAlign: "middle" };
+
+  return (
+    <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+
+      {/* ── Left column: Upcoming ERTs + Tasks ── */}
+      <div style={{ flex: "0 0 44%", display: "flex", flexDirection: "column", gap: 14 }}>
+
+      {/* Upcoming ERTs — blue */}
+      <div style={{ background: D.bg2, border: `1px solid ${D.blue}60`, borderRadius: 12, overflow: "hidden", boxShadow: `0 0 0 1px ${D.blue}15, 0 4px 20px ${D.blue}12` }}>
+        <div style={{ padding: "12px 14px", borderBottom: `1px solid ${D.blue}25`, background: `linear-gradient(135deg, ${D.blue}22 0%, ${D.blue}10 100%)`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 15 }}>📋</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: D.blue, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+              Upcoming ERTs
+            </span>
+          </div>
+          <span style={{ fontSize: 10, color: D.blue, background: `${D.blue}25`, border: `1px solid ${D.blue}50`, borderRadius: 9, padding: "2px 8px", fontWeight: 700 }}>
+            {upcoming.length} in 30 days
+          </span>
+        </div>
+
+        {!upcoming.length
+          ? <div style={{ padding: "36px 16px", textAlign: "center", color: D.muted, fontSize: 13 }}>No ERTs scheduled in the next 30 days.</div>
+          : (
+            <div style={{ overflowY: "auto", maxHeight: 460 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr>
+                    {["Client", "VA", "ERT date", "Days", "Registered", "Status"].map((h) => (
+                      <th key={h} style={th}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {upcoming.map((c) => {
+                    const dayName = new Date(c.ert + "T00:00:00").toLocaleDateString("en-GB", { weekday: "short" });
+                    return (
+                      <tr key={c.id} className="qcl-row" onClick={() => setModal({ type: "view", id: c.id })} style={{ cursor: "pointer", background: D.bg2 }}>
+                        <td style={td}><strong style={{ fontWeight: 600 }}>{c.name}</strong></td>
+                        <td style={td}><VaChip va={c.va} /></td>
+                        <td style={{ ...td, fontSize: 12 }}>
+                          <span style={{ color: D.muted, fontSize: 11 }}>{dayName}, </span>{fmt(c.ert)}
+                          {c.ertTime && <div style={{ color: D.hint, fontSize: 11 }}>{c.ertTime}</div>}
+                        </td>
+                        <td style={td}><Days ert={c.ert} /></td>
+                        <td style={{ ...td, textAlign: "center" }}>
+                          <span style={{ fontWeight: 700, fontSize: 14, color: (c.registered || 0) > 0 ? D.green : D.hint }}>
+                            {c.registered || 0}
+                          </span>
+                        </td>
+                        <td style={td}><SPill s={c.status} /></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )
+        }
+      </div>
+
+      {/* Tasks panel — below ERTs */}
+      <TaskPanel />
+
+      </div>{/* end left column */}
+
+      {/* ── Right column: Calendar | (Inbox + Meeting Draft stacked) ── */}
+      <div style={{ flex: 1, minWidth: 0, display: "flex", gap: 14, alignItems: "flex-start" }}>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <CalendarPanel accent={D.green} />
+        </div>
+
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 14 }}>
+          <InboxPanel />
+          <MeetingDraftPanel clients={clients} onAddNote={onAddNote} />
+        </div>
+
+      </div>
+
+    </div>
+  );
+}
