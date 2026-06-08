@@ -1,6 +1,6 @@
 "use client";
-import React from "react";
-import type { Client } from "@/types";
+import React, { useMemo } from "react";
+import type { Client, RoundtableEvent } from "@/types";
 import { useTheme } from "@/lib/theme";
 import { fmt } from "@/lib/utils";
 import { VaChip, SPill, Days } from "./ui";
@@ -9,21 +9,61 @@ import CalendarPanel from "./CalendarPanel";
 import TaskPanel from "./TaskPanel";
 import MeetingDraftPanel from "./MeetingDraftPanel";
 
-export default function Overview({ clients, setModal, onAddNote }: {
+function cleanName(n: string) {
+  return n.replace(/\s*\(copy\)\s*/gi, "").replace(/\s*\bcopy\b\s*$/gi, "").trim();
+}
+
+function resolveClient(mondayName: string, list: Client[]): string | null {
+  const mn = cleanName(mondayName).toLowerCase();
+  const match = list.find((c) => {
+    const cn = c.name.toLowerCase().trim();
+    if (cn === mn) return true;
+    const parts = cn.split(" ").filter((p) => p.length > 2);
+    return parts.length > 0 && parts.every((p) => mn.includes(p));
+  });
+  return match ? match.name : null;
+}
+
+export default function Overview({ clients, rtData, setModal, onAddNote }: {
   clients: Client[];
+  rtData: { boardName: string; events: RoundtableEvent[] } | null;
   setModal: (m: { type: string; id: string }) => void;
   onAddNote: (clientId: string, text: string) => void;
 }) {
   const { D } = useTheme();
 
-  const now = new Date();
+  const now = new Date(); now.setHours(0, 0, 0, 0);
   const m30 = new Date(); m30.setDate(m30.getDate() + 30);
 
-  const upcoming = clients.filter((c) => {
-    if (!c.ert) return false;
-    const d = new Date(c.ert + "T00:00:00");
-    return d >= now && d <= m30;
-  }).sort((a, b) => new Date(a.ert).getTime() - new Date(b.ert).getTime());
+  // Derive next ERT per client from live Roundtable data
+  const rtNextErt = useMemo(() => {
+    const map = new Map<string, { date: string; time: string; registered: number | null }>();
+    if (!rtData?.events) return map;
+    for (const ev of rtData.events) {
+      if (!ev.date) continue;
+      const d = new Date(ev.date + "T00:00:00");
+      if (d < now) continue;
+      const key = resolveClient(ev.clientName, clients);
+      if (!key) continue;
+      const existing = map.get(key);
+      if (!existing || ev.date < existing.date)
+        map.set(key, { date: ev.date, time: ev.rtTime || "", registered: ev.registered ?? null });
+    }
+    return map;
+  }, [rtData, clients]);
+
+  const upcoming = clients
+    .filter((c) => {
+      const ert = rtNextErt.get(c.name)?.date;
+      if (!ert) return false;
+      const d = new Date(ert + "T00:00:00");
+      return d >= now && d <= m30;
+    })
+    .sort((a, b) => {
+      const ad = rtNextErt.get(a.name)?.date || "";
+      const bd = rtNextErt.get(b.name)?.date || "";
+      return ad.localeCompare(bd);
+    });
 
   const th: React.CSSProperties = {
     fontSize: 11, color: D.muted, fontWeight: 600, textTransform: "uppercase",
@@ -66,19 +106,21 @@ export default function Overview({ clients, setModal, onAddNote }: {
                 </thead>
                 <tbody>
                   {upcoming.map((c) => {
-                    const dayName = new Date(c.ert + "T00:00:00").toLocaleDateString("en-GB", { weekday: "short" });
+                    const entry = rtNextErt.get(c.name)!;
+                    const dayName = new Date(entry.date + "T00:00:00").toLocaleDateString("en-GB", { weekday: "short" });
+                    const reg = entry.registered;
                     return (
                       <tr key={c.id} className="qcl-row" onClick={() => setModal({ type: "view", id: c.id })} style={{ cursor: "pointer", background: D.bg2 }}>
                         <td style={td}><strong style={{ fontWeight: 600 }}>{c.name}</strong></td>
                         <td style={td}><VaChip va={c.va} /></td>
                         <td style={{ ...td, fontSize: 12 }}>
-                          <span style={{ color: D.muted, fontSize: 11 }}>{dayName}, </span>{fmt(c.ert)}
-                          {c.ertTime && <div style={{ color: D.hint, fontSize: 11 }}>{c.ertTime}</div>}
+                          <span style={{ color: D.muted, fontSize: 11 }}>{dayName}, </span>{fmt(entry.date)}
+                          {entry.time && <div style={{ color: D.hint, fontSize: 11 }}>{entry.time}</div>}
                         </td>
-                        <td style={td}><Days ert={c.ert} /></td>
+                        <td style={td}><Days ert={entry.date} /></td>
                         <td style={{ ...td, textAlign: "center" }}>
-                          <span style={{ fontWeight: 700, fontSize: 14, color: (c.registered || 0) > 0 ? D.green : D.hint }}>
-                            {c.registered || 0}
+                          <span style={{ fontWeight: 700, fontSize: 14, color: reg == null ? D.hint : reg > 0 ? D.green : D.hint }}>
+                            {reg == null ? "—" : reg}
                           </span>
                         </td>
                         <td style={td}><SPill s={c.status} /></td>

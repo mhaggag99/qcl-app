@@ -13,12 +13,13 @@ async function gql(query: string, variables?: Record<string, unknown>) {
 
 // Paginate through all Monday boards to find one by exact name
 async function findBoard(name: string): Promise<{ id: string; name: string } | null> {
+  const target = name.toLowerCase();
   let page = 1;
   while (true) {
     const data = await gql(`{ boards(limit: 500, page: ${page}) { id name } }`);
     const boards: { id: string; name: string }[] = data?.data?.boards || [];
     if (!boards.length) return null;
-    const found = boards.find((b) => b.name === name);
+    const found = boards.find((b) => b.name.toLowerCase() === target);
     if (found) return found;
     if (boards.length < 500) return null;
     page++;
@@ -103,10 +104,8 @@ export async function postToMCL(
   clientName: string,
   noteText: string
 ): Promise<{ ok: boolean; bubble: string; error?: string }> {
-  const data = await gql("{ boards(limit: 500) { id name } }");
-  const boards: { id: string; name: string }[] = data?.data?.boards || [];
-  const board = boards.find((b) => b.name.toLowerCase() === "master client list");
-  if (!board) return { ok: false, bubble: "MCL", error: `MCL board not found (searched ${boards.length} boards)` };
+  const board = await findBoard("master client list");
+  if (!board) return { ok: false, bubble: "MCL", error: `MCL board not found` };
 
   // Use per-group pagination to avoid the 500-item board-level cap
   const groupsData = await gql(`{ boards(ids: [${board.id}]) { groups { id title } } }`);
@@ -145,6 +144,111 @@ export async function postToMCL(
   }
 
   return { ok: false, bubble: "MCL", error: `"${clientName}" not found in MCL (searched ${groups.length} groups)` };
+}
+
+const VA_NAME_MAP: Record<string, string> = {
+  janine: "Janine",
+  meliza: "Meliza",
+  charlene: "Charlene",
+  markjones: "Markjones",
+};
+
+function resolveVAName(fullName: string): string | null {
+  const lower = fullName.toLowerCase();
+  for (const [prefix, name] of Object.entries(VA_NAME_MAP)) {
+    if (lower.startsWith(prefix)) return name;
+  }
+  return null;
+}
+
+export interface VAAttendanceEntry {
+  id: string;
+  va: string;
+  date: string;         // YYYY-MM-DD of absence start (PHT)
+  returnDate: string;   // YYYY-MM-DD expected return
+  type: string;         // raw Monday status label
+  late: boolean;
+  absent: boolean;
+  reason: string;
+  clientsNote: string;
+  submittedPHT: string; // "HH:MM" in PHT for display
+  shortNotice: boolean; // submitted < 6h before shift (3–9 AM PHT) or after shift (9+ AM PHT)
+}
+
+export async function getVAAttendance(): Promise<VAAttendanceEntry[]> {
+  const BOARD_ID = "18403901977"; // QCL Team Attendance Tracker
+
+  const colData = await gql(`{ boards(ids: [${BOARD_ID}]) { columns { id title } } }`);
+  const columns: { id: string; title: string }[] = colData?.data?.boards?.[0]?.columns || [];
+  const colId = (title: string) => columns.find((c) => c.title === title)?.id || "";
+
+  const submittedId  = colId("Date");
+  const returnId     = colId("Expected Return Date");
+  const typeId       = colId("Type of Absence");
+  const reasonId     = colId("Please specify reason");
+  const clientsId    = colId("Clients Need Reassignment");
+
+  const ids = [submittedId, returnId, typeId, reasonId, clientsId]
+    .filter(Boolean).map((id) => `"${id}"`).join(", ");
+
+  const items: { id: string; name: string; column_values: { id: string; text: string }[] }[] = [];
+  let cursor: string | null = null;
+  do {
+    const cursorClause = cursor ? `, cursor: "${cursor}"` : "";
+    const result = await gql(`{
+      boards(ids: [${BOARD_ID}]) {
+        items_page(limit: 500${cursorClause}) {
+          cursor
+          items { id name column_values(ids: [${ids}]) { id text } }
+        }
+      }
+    }`);
+    const page = result?.data?.boards?.[0]?.items_page;
+    for (const item of (page?.items || [])) items.push(item);
+    cursor = page?.cursor || null;
+  } while (cursor);
+
+  const entries: VAAttendanceEntry[] = [];
+  for (const item of items) {
+    const va = resolveVAName(item.name);
+    if (!va) continue;
+
+    const cv = item.column_values;
+    const get = (id: string) => cv.find((c) => c.id === id)?.text || "";
+
+    const submittedAt = get(submittedId);
+    const returnRaw   = get(returnId);
+    const type        = get(typeId);
+    const reason      = get(reasonId);
+    const clientsNote = get(clientsId);
+
+    const date = submittedAt ? submittedAt.slice(0, 10) : "";
+    if (!date) continue;
+
+    const returnDate = returnRaw ? returnRaw.slice(0, 10) : "";
+
+    const typeLower   = type.toLowerCase();
+    const reasonLower = reason.toLowerCase();
+    let isLate   = typeLower.includes("late");
+    let isAbsent = !isLate;
+    if (typeLower === "others" && reasonLower.includes("late")) { isLate = true; isAbsent = false; }
+
+    // Convert UTC submission timestamp → CST (UTC-6)
+    const dtUTC = new Date(submittedAt.replace(" ", "T") + "Z");
+    const cstMs = dtUTC.getTime() - 6 * 3600 * 1000;
+    const cstDate = new Date(cstMs);
+    const cstHour = cstDate.getUTCHours();
+    const cstMin  = cstDate.getUTCMinutes();
+    const submittedPHT = `${String(cstHour).padStart(2, "0")}:${String(cstMin).padStart(2, "0")}`;
+
+    // Short notice: submitted ≥ 2 AM CST = less than 6h before 8 AM shift, or after shift started
+    // Exceptions: Late Login entries (already tracked), Planned PTO (explicitly planned)
+    const isPlannedPTO = typeLower === "planned pto";
+    const shortNotice = isAbsent && !isPlannedPTO && cstHour >= 2;
+
+    entries.push({ id: item.id, va, date, returnDate, type, late: isLate, absent: isAbsent, reason, clientsNote, submittedPHT, shortNotice });
+  }
+  return entries;
 }
 
 export interface RoundtableEvent {
@@ -269,24 +373,29 @@ export async function getMonthlyActivity(): Promise<{ boardName: string; rows: A
     .map((id) => `"${id}"`)
     .join(", ");
 
-  // Step 2: fetch all items
-  const itemData = await gql(`{
-    boards(ids: [${boardId}]) {
-      items_page(limit: 500) {
-        items {
-          id name
-          group { title }
-          column_values(ids: [${ids}]) { id text }
+  // Step 2: fetch all items with board-level cursor pagination (avoids 317 per-group API calls)
+  const items: { name: string; groupTitle: string; column_values: { id: string; text: string }[] }[] = [];
+  let cursor: string | null = null;
+  do {
+    const cursorClause = cursor ? `, cursor: "${cursor}"` : "";
+    const result = await gql(`{
+      boards(ids: [${boardId}]) {
+        items_page(limit: 500${cursorClause}) {
+          cursor
+          items {
+            name
+            group { title }
+            column_values(ids: [${ids}]) { id text }
+          }
         }
       }
+    }`);
+    const page = result?.data?.boards?.[0]?.items_page;
+    for (const item of (page?.items || [])) {
+      items.push({ name: item.name, groupTitle: item.group?.title || "", column_values: item.column_values });
     }
-  }`);
-
-  const items: {
-    id: string; name: string;
-    group: { title: string };
-    column_values: { id: string; text: string }[];
-  }[] = itemData?.data?.boards?.[0]?.items_page?.items || [];
+    cursor = page?.cursor || null;
+  } while (cursor);
 
   const num = (text: string) => parseFloat(text) || 0;
 
@@ -294,7 +403,7 @@ export async function getMonthlyActivity(): Promise<{ boardName: string; rows: A
     const cv = item.column_values;
     const get = (id: string) => cv.find((c) => c.id === id)?.text || "";
     return {
-      clientName:     item.group.title,
+      clientName:     item.groupTitle,
       date:           item.name,
       activityDate:   get(activityDateId),
       va:             get(vaId),

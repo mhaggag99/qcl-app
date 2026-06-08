@@ -78,4 +78,6 @@ export interface AttendanceEntry {
   absent: boolean;
   ooz: boolean;
   notes: string;
+  shortNotice?: boolean;  // Monday-sourced only: true if < 6h notice or after shift
+  submittedPHT?: string;  // Monday-sourced only: "HH:MM" PHT
 }

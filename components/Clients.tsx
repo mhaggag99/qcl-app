@@ -7,7 +7,7 @@ import { fmt } from "@/lib/utils";
 import { IB, SPill, inp } from "./ui";
 
 const VA_COLORS: Record<string, string | undefined> = {
-  Peevee: "green", Rosalie: "purple", Aliah: "amber", Arvi: "blue", Claire: "red",
+  Janine: "red", Meliza: "purple", Charlene: "amber", Markjones: "blue",
 };
 
 function cleanName(n: string) {
@@ -25,12 +25,14 @@ function resolveClient(mondayName: string, list: Client[]): string | null {
   return match ? match.name : null;
 }
 
-export default function Clients({ clients, setModal, onDelete, onStatusChange, rtData }: {
+export default function Clients({ clients, setModal, onDelete, onStatusChange, rtData, onRefreshRt, rtLoading }: {
   clients: Client[];
   setModal: (m: { type: string; id: string }) => void;
   onDelete: (id: string) => void;
   onStatusChange: (id: string, status: string) => void;
   rtData: { boardName: string; events: RoundtableEvent[] } | null;
+  onRefreshRt: () => void;
+  rtLoading: boolean;
 }) {
   const { D } = useTheme();
   const [q, setQ] = useState("");
@@ -40,6 +42,7 @@ export default function Clients({ clients, setModal, onDelete, onStatusChange, r
   const [sortCol, setSortCol] = useState("");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [editStatus, setEditStatus] = useState<string | null>(null);
+  const [showStopped, setShowStopped] = useState(false);
 
   const rtAttendees = useMemo(() => {
     const map = new Map<string, number>();
@@ -48,6 +51,38 @@ export default function Clients({ clients, setModal, onDelete, onStatusChange, r
       const key = resolveClient(ev.clientName, clients);
       if (!key || ev.attendees == null) continue;
       map.set(key, (map.get(key) ?? 0) + ev.attendees);
+    }
+    return map;
+  }, [rtData, clients]);
+
+  const rtLastErt = useMemo(() => {
+    const map = new Map<string, string>();
+    if (!rtData?.events) return map;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    for (const ev of rtData.events) {
+      if (!ev.date) continue;
+      const d = new Date(ev.date + "T00:00:00");
+      if (d >= today) continue;
+      const key = resolveClient(ev.clientName, clients);
+      if (!key) continue;
+      const existing = map.get(key);
+      if (!existing || ev.date > existing) map.set(key, ev.date);
+    }
+    return map;
+  }, [rtData, clients]);
+
+  const rtNextErt = useMemo(() => {
+    const map = new Map<string, { date: string; time: string; registered: number | null }>();
+    if (!rtData?.events) return map;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    for (const ev of rtData.events) {
+      if (!ev.date) continue;
+      const d = new Date(ev.date + "T00:00:00");
+      if (d < today) continue;
+      const key = resolveClient(ev.clientName, clients);
+      if (!key) continue;
+      const existing = map.get(key);
+      if (!existing || ev.date < existing.date) map.set(key, { date: ev.date, time: ev.rtTime || "", registered: ev.registered ?? null });
     }
     return map;
   }, [rtData, clients]);
@@ -62,31 +97,46 @@ export default function Clients({ clients, setModal, onDelete, onStatusChange, r
     else { setSortCol(col); setSortDir("asc"); }
   }
 
-  const list = clients.filter((c) => {
+  function applyFilters(c: Client) {
     if (q && !c.name.toLowerCase().includes(q.toLowerCase()) && !(c.email || "").toLowerCase().includes(q.toLowerCase())) return false;
     if (fva && c.va !== fva) return false;
-    if (fst && c.status !== fst) return false;
-    if (fErt === "scheduled" && !c.ert) return false;
-    if (fErt === "none" && c.ert) return false;
+    const nextErt = rtNextErt.get(c.name)?.date;
+    if (fErt === "scheduled" && !nextErt) return false;
+    if (fErt === "none" && nextErt) return false;
     return true;
-  }).sort((a, b) => {
-    // Stopped always at bottom, regardless of active sort
-    const aStop = a.status === "Stopped" ? 1 : 0;
-    const bStop = b.status === "Stopped" ? 1 : 0;
-    if (aStop !== bStop) return aStop - bStop;
-    if (!sortCol) return 0;
-    let av: number | string = 0;
-    let bv: number | string = 0;
-    if (sortCol === "name") { av = a.name.toLowerCase(); bv = b.name.toLowerCase(); }
-    else if (sortCol === "ert") { av = a.ert || ""; bv = b.ert || ""; }
-    else if (sortCol === "attendees") { av = rtAttendees.get(a.name) ?? a.attendees ?? 0; bv = rtAttendees.get(b.name) ?? b.attendees ?? 0; }
-    else if (sortCol === "days") {
-      av = a.ert ? new Date(a.ert + "T00:00:00").getTime() : 0;
-      bv = b.ert ? new Date(b.ert + "T00:00:00").getTime() : 0;
-    }
-    if (typeof av === "number" && typeof bv === "number") return sortDir === "asc" ? av - bv : bv - av;
-    return sortDir === "asc" ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
-  });
+  }
+
+  function applySort(arr: Client[]) {
+    return [...arr].sort((a, b) => {
+      if (!sortCol) return 0;
+      let av: number | string = 0;
+      let bv: number | string = 0;
+      if (sortCol === "name") { av = a.name.toLowerCase(); bv = b.name.toLowerCase(); }
+      else if (sortCol === "va") { av = a.va.toLowerCase(); bv = b.va.toLowerCase(); }
+      else if (sortCol === "status") { av = a.status.toLowerCase(); bv = b.status.toLowerCase(); }
+      else if (sortCol === "ert") {
+        av = rtNextErt.get(a.name)?.date || "";
+        bv = rtNextErt.get(b.name)?.date || "";
+      }
+      else if (sortCol === "attendees") { av = rtAttendees.get(a.name) ?? a.attendees ?? 0; bv = rtAttendees.get(b.name) ?? b.attendees ?? 0; }
+      else if (sortCol === "days") {
+        const ad = rtNextErt.get(a.name)?.date;
+        const bd = rtNextErt.get(b.name)?.date;
+        av = ad ? new Date(ad + "T00:00:00").getTime() : Infinity;
+        bv = bd ? new Date(bd + "T00:00:00").getTime() : Infinity;
+      }
+      else if (sortCol === "lastErt") {
+        av = rtLastErt.get(a.name) || "";
+        bv = rtLastErt.get(b.name) || "";
+      }
+      if (typeof av === "number" && typeof bv === "number") return sortDir === "asc" ? av - bv : bv - av;
+      return sortDir === "asc" ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
+    });
+  }
+
+  const activeClients = clients.filter((c) => c.status !== "Stopped");
+  const list = applySort(activeClients.filter((c) => applyFilters(c) && (fst ? c.status === fst : true)));
+  const stoppedList = clients.filter((c) => c.status === "Stopped" && applyFilters(c));
 
   const th: React.CSSProperties = {
     fontSize: 11, color: D.text, fontWeight: 700, textTransform: "uppercase",
@@ -140,21 +190,40 @@ export default function Clients({ clients, setModal, onDelete, onStatusChange, r
         </select>
       </div>
 
-      {/* Row count */}
-      <div style={{ fontSize: 12, color: D.hint, marginBottom: 10 }}>
-        Showing{" "}
-        <span style={{ color: D.muted, fontWeight: 600 }}>{list.length}</span>
-        {" "}of{" "}
-        <span style={{ color: D.muted, fontWeight: 600 }}>{clients.length}</span>
-        {" "}clients
+      {/* Row count + refresh */}
+      <div style={{ fontSize: 12, color: D.hint, marginBottom: 10, display: "flex", alignItems: "center", gap: 10 }}>
+        <span>
+          Showing{" "}
+          <span style={{ color: D.muted, fontWeight: 600 }}>{list.length}</span>
+          {" "}of{" "}
+          <span style={{ color: D.muted, fontWeight: 600 }}>{activeClients.length}</span>
+          {" "}active clients
+        </span>
         {list.filter((c) => c.redzone).length > 0 && (
-          <span style={{ marginLeft: 10, color: D.red, fontWeight: 600 }}>
+          <span style={{ color: D.red, fontWeight: 600 }}>
             · {list.filter((c) => c.redzone).length} on RedZone
           </span>
         )}
+        {stoppedList.length > 0 && (
+          <span style={{ color: D.hint }}>· {stoppedList.length} inactive</span>
+        )}
+        <button
+          onClick={onRefreshRt}
+          disabled={rtLoading}
+          title="Refresh Roundtable data"
+          style={{
+            marginLeft: "auto", background: "none", border: `1px solid ${D.border}`,
+            borderRadius: 6, padding: "3px 9px", cursor: rtLoading ? "default" : "pointer",
+            color: rtLoading ? D.hint : D.muted, fontSize: 11, fontFamily: "inherit",
+            display: "flex", alignItems: "center", gap: 5,
+          }}
+        >
+          <span style={{ display: "inline-block", animation: rtLoading ? "spin 1s linear infinite" : "none" }}>↻</span>
+          {rtLoading ? "Loading…" : "Refresh"}
+        </button>
       </div>
 
-      {!list.length
+      {!list.length && !stoppedList.length
         ? <div style={{ textAlign: "center", padding: "36px 16px", color: D.muted }}>No clients found.</div>
         : (
           <div style={{ overflowX: "auto", border: `1px solid ${D.border}`, borderRadius: 10, overflow: "hidden" }}>
@@ -162,23 +231,31 @@ export default function Clients({ clients, setModal, onDelete, onStatusChange, r
               <thead>
                 <tr>
                   <SH col="name" label="Client" />
-                  <th style={th}>VA</th>
-                  <th style={th}>Status</th>
-                  <SH col="ert" label="Next ERT" />
+                  <SH col="va" label="VA" />
+                  <SH col="status" label="Status" />
+                  <SH col="days" label="Next ERT" />
+                  <SH col="lastErt" label="Last ERT" />
                   <SH col="attendees" label="Attendees" />
-                  <SH col="days" label="Days" />
                   <th style={th}></th>
                 </tr>
               </thead>
               <tbody>
+                {!list.length && (
+                  <tr><td colSpan={7} style={{ padding: "24px", textAlign: "center", color: D.muted, fontSize: 13 }}>No active clients match your filters.</td></tr>
+                )}
                 {list.map((c) => {
                   const vaColor = palette[VA_COLORS[c.va] || "muted"] || D.muted;
                   const att = rtAttendees.has(c.name) ? rtAttendees.get(c.name)! : (rtData == null ? null : (c.attendees || 0));
                   const attNum = att ?? 0;
                   const attColor = attNum === 0 ? D.hint : attNum < 8 ? D.amber : D.text;
-                  const d = daysTo(c.ert);
-                  const dColor = d === null ? D.hint : d < 0 ? D.red : d <= 7 ? D.red : d <= 14 ? D.amber : D.muted;
-                  const dLabel = d === null ? "—" : d < 0 ? `${Math.abs(d)}d ago` : `${d}d`;
+                  const nextErtEntry = rtNextErt.get(c.name);
+                  const nextErtDate = nextErtEntry?.date || null;
+                  const nextErtTime = nextErtEntry?.time || null;
+                  const nextErtReg = nextErtEntry?.registered ?? null;
+                  const d = daysTo(nextErtDate || "");
+                  const dColor = d === null ? D.hint : d <= 7 ? D.red : d <= 14 ? D.amber : D.green;
+                  const dLabel = d === null ? "—" : d === 0 ? "Today" : `${d}d`;
+                  const lastErtDate = rtLastErt.get(c.name) || null;
 
                   return (
                     <tr
@@ -236,14 +313,35 @@ export default function Clients({ clients, setModal, onDelete, onStatusChange, r
                         )}
                       </td>
 
-                      {/* ERT date */}
-                      <td style={{ ...td, fontSize: 12, color: c.ert ? D.text : D.hint }}>
-                        {c.ert ? (
+                      {/* Next ERT — from live Roundtable data */}
+                      <td style={{ ...td, fontSize: 12 }}>
+                        {nextErtDate ? (
                           <>
-                            {fmt(c.ert)}
-                            {c.ertTime && <div style={{ color: D.hint, fontSize: 11, marginTop: 1 }}>{c.ertTime}</div>}
+                            <span style={{ color: D.text }}>{fmt(nextErtDate)}</span>
+                            {nextErtTime && <div style={{ color: D.hint, fontSize: 11 }}>{nextErtTime}</div>}
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 3 }}>
+                              <span style={{ color: dColor, fontWeight: d !== null && d <= 14 ? 600 : 400, fontSize: 11, fontVariantNumeric: "tabular-nums" }}>
+                                {dLabel}
+                              </span>
+                              {nextErtReg !== null && (
+                                <span style={{
+                                  fontSize: 12, fontWeight: 700, fontVariantNumeric: "tabular-nums",
+                                  color: nextErtReg === 0 ? D.muted : nextErtReg < 5 ? D.amber : D.blue,
+                                  background: nextErtReg === 0 ? `${D.hint}18` : nextErtReg < 5 ? `${D.amber}20` : `${D.blue}20`,
+                                  border: `1px solid ${nextErtReg === 0 ? D.hint : nextErtReg < 5 ? D.amber : D.blue}35`,
+                                  borderRadius: 6, padding: "2px 7px",
+                                }}>
+                                  {nextErtReg} reg
+                                </span>
+                              )}
+                            </div>
                           </>
-                        ) : "—"}
+                        ) : <span style={{ color: D.hint }}>—</span>}
+                      </td>
+
+                      {/* Last ERT — from Roundtable data */}
+                      <td style={{ ...td, fontSize: 12, color: lastErtDate ? D.muted : D.hint }}>
+                        {lastErtDate ? fmt(lastErtDate) : "—"}
                       </td>
 
                       {/* Attendees — summed from Monday roundtable */}
@@ -257,16 +355,6 @@ export default function Clients({ clients, setModal, onDelete, onStatusChange, r
                             </span>
                           )
                         }
-                      </td>
-
-                      {/* Days — color only for urgent */}
-                      <td style={td}>
-                        <span style={{
-                          color: dColor,
-                          fontWeight: d !== null && d <= 7 ? 600 : 400,
-                          fontVariantNumeric: "tabular-nums",
-                          fontSize: 12,
-                        }}>{dLabel}</span>
                       </td>
 
                       {/* Actions */}
@@ -285,6 +373,57 @@ export default function Clients({ clients, setModal, onDelete, onStatusChange, r
           </div>
         )
       }
+
+      {/* Stopped / Inactive clients — collapsible */}
+      {stoppedList.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <button
+            onClick={() => setShowStopped((v) => !v)}
+            style={{
+              display: "flex", alignItems: "center", gap: 8,
+              background: "none", border: `1px solid ${D.border}`,
+              borderRadius: 8, padding: "7px 14px", cursor: "pointer",
+              color: D.muted, fontSize: 12, fontWeight: 600, fontFamily: "inherit",
+              width: "100%", textAlign: "left",
+            }}
+          >
+            <span style={{ fontSize: 10, transition: "transform 0.15s", display: "inline-block", transform: showStopped ? "rotate(90deg)" : "rotate(0deg)" }}>▶</span>
+            Inactive / Stopped ({stoppedList.length})
+          </button>
+          {showStopped && (
+            <div style={{ marginTop: 8, border: `1px solid ${D.border}`, borderRadius: 10, overflow: "hidden", opacity: 0.7 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <tbody>
+                  {stoppedList.map((c) => {
+                    const vaColor = palette[VA_COLORS[c.va] || "muted"] || D.muted;
+                    return (
+                      <tr key={c.id} className="qcl-row" onClick={() => setModal({ type: "view", id: c.id })}
+                        style={{ background: D.bg2, cursor: "pointer" }}>
+                        <td style={td}>
+                          <span style={{ fontWeight: 600 }}>{c.name}</span>
+                          {c.email && <div style={{ fontSize: 11, color: D.hint, marginTop: 1 }}>{c.email}</div>}
+                        </td>
+                        <td style={td}><span style={{ fontSize: 12, fontWeight: 600, color: vaColor }}>{c.va || <span style={{ color: D.hint }}>—</span>}</span></td>
+                        <td style={td}><SPill s={c.status} /></td>
+                        <td style={{ ...td, fontSize: 12, color: D.hint }}>{c.ert ? fmt(c.ert) : "—"}</td>
+                        <td style={td} />
+                        <td style={td} />
+                        <td style={td} onClick={(e) => e.stopPropagation()}>
+                          <div style={{ display: "flex", gap: 4 }}>
+                            <IB title="View" onClick={() => setModal({ type: "view", id: c.id })}>👁</IB>
+                            <IB title="Edit" onClick={() => setModal({ type: "edit", id: c.id })}>✏</IB>
+                            <IB title="Delete" danger onClick={() => onDelete(c.id)}>✕</IB>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

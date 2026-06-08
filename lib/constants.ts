@@ -1,4 +1,4 @@
-export const VAS = ["Claire", "Rosalie", "Aliah", "Arvi", "Peevee"] as const;
+export const VAS = ["Janine", "Meliza", "Charlene", "Markjones"] as const;
 export const STATUSES = ["New Client", "Performing", "Slow Generating", "At Risk", "Stopped"] as const;
 
 export const DARK = {

@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import type { Client, AttendanceEntry, Note, RoundtableEvent, ActivityRow } from "@/types";
+import type { VAAttendanceEntry } from "@/lib/monday";
 import { useTheme } from "@/lib/theme";
 import { uid, tsNow, fmt } from "@/lib/utils";
 import { B, Modal } from "./ui";
@@ -38,12 +39,16 @@ export default function Dashboard() {
   const [actData, setActData] = useState<{ boardName: string; rows: ActivityRow[] } | null>(null);
   const [actLoading, setActLoading] = useState(false);
   const [actError, setActError] = useState("");
+  const [mondayAtt, setMondayAtt] = useState<VAAttendanceEntry[]>([]);
+  const [mondayAttLoading, setMondayAttLoading] = useState(false);
 
   useEffect(() => {
     Promise.all([
       fetch("/api/clients").then((r) => r.json()),
       fetch("/api/attendance").then((r) => r.json()),
     ]).then(([c, a]) => { setClients(c); setAttendance(a); setLoading(false); });
+    loadRoundtable();
+    loadMondayAtt();
   }, []);
 
   async function loadRoundtable() {
@@ -54,6 +59,15 @@ export default function Dashboard() {
       else { setRtData(await res.json()); }
     } catch { setRtError("Failed to connect to Monday."); }
     setRtLoading(false);
+  }
+
+  async function loadMondayAtt() {
+    setMondayAttLoading(true);
+    try {
+      const res = await fetch("/api/monday/va-attendance");
+      if (res.ok) setMondayAtt(await res.json());
+    } catch { /* silent */ }
+    setMondayAttLoading(false);
   }
 
   async function loadActivity() {
@@ -192,6 +206,7 @@ export default function Dashboard() {
   }
 
   async function delAtt(id: string) {
+    if (id.startsWith("monday-")) return; // Monday entries are read-only
     await fetch(`/api/attendance/${id}`, { method: "DELETE" });
     setAttendance((prev) => prev.filter((e) => e.id !== id));
   }
@@ -395,10 +410,10 @@ export default function Dashboard() {
 
       {/* Content */}
       <div key={tab} className="qcl-tab-content" style={{ padding: "24px 28px 8px", flex: 1, minHeight: 0, position: "relative", zIndex: 1 }}>
-        {tab === "overview" && <Overview clients={clients} setModal={setModal as (m: { type: string; id: string }) => void} onAddNote={addNote} />}
-        {tab === "clients" && <Clients clients={clients} setModal={setModal as (m: { type: string; id: string }) => void} onDelete={deleteClient} onStatusChange={changeStatus} rtData={rtData} />}
+        {tab === "overview" && <Overview clients={clients} rtData={rtData} setModal={setModal as (m: { type: string; id: string }) => void} onAddNote={addNote} />}
+        {tab === "clients" && <Clients clients={clients} setModal={setModal as (m: { type: string; id: string }) => void} onDelete={deleteClient} onStatusChange={changeStatus} rtData={rtData} onRefreshRt={loadRoundtable} rtLoading={rtLoading} />}
         {tab === "roundtable" && <RoundtableTab clients={clients} data={rtData} loading={rtLoading} error={rtError} onLoad={loadRoundtable} />}
-        {tab === "vas" && <VAsTab clients={clients} attendance={attendance} setModal={setModal as (m: { type: string }) => void} onDelAtt={delAtt} />}
+        {tab === "vas" && <VAsTab clients={clients} attendance={attendance} mondayAtt={mondayAtt} mondayAttLoading={mondayAttLoading} onRefreshMondayAtt={loadMondayAtt} setModal={setModal as (m: { type: string }) => void} onDelAtt={delAtt} />}
         {tab === "activity" && <MondayActivity clients={clients} data={actData} loading={actLoading} error={actError} onLoad={loadActivity} />}
       </div>
 
