@@ -72,11 +72,10 @@ export function VaChip({ va }: { va?: string }) {
   const { D } = useTheme();
   if (!va) return <span style={{ color: D.muted }}>—</span>;
   const m: Record<string, { bg: string; c: string }> = {
-    Peevee:  { bg: `${D.green}1e`,  c: D.green },
-    Rosalie: { bg: `${D.purple}1e`, c: D.purple },
-    Aliah:   { bg: `${D.amber}1e`,  c: D.amber },
-    Arvi:    { bg: `${D.blue}1e`,   c: D.blue },
-    Claire:  { bg: `${D.red}1e`,    c: D.red },
+    Janine:    { bg: `${D.red}1e`,    c: D.red },
+    Meliza:    { bg: `${D.purple}1e`, c: D.purple },
+    Charlene:  { bg: `${D.amber}1e`,  c: D.amber },
+    Markjones: { bg: `${D.blue}1e`,   c: D.blue },
   };
   const k = m[va] || { bg: D.bg3, c: D.muted };
   return (

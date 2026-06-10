@@ -78,6 +78,8 @@ export interface AttendanceEntry {
   absent: boolean;
   ooz: boolean;
   notes: string;
+  shortNotice?: boolean;
+  submittedPHT?: string;
 }
 
 export interface ActivityLog {

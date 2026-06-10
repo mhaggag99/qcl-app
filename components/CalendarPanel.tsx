@@ -108,7 +108,7 @@ export default function CalendarPanel({ accent }: { accent?: string } = {}) {
   }, []);
 
   useEffect(() => {
-    fetch("/api/auth/status").then((r) => r.json()).then((d) => setConnected(d.connected));
+    fetch("/api/auth/status").then((r) => r.json()).then((d) => setConnected(d.connected)).catch(() => setConnected(false));
     fetchEvents();
     if (typeof window !== "undefined") {
       const p = new URLSearchParams(window.location.search);

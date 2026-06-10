@@ -1,14 +1,29 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import type { Client, AttendanceEntry } from "@/types";
+import type { VAAttendanceEntry } from "@/lib/monday";
 import { VAS } from "@/lib/constants";
 import { useTheme } from "@/lib/theme";
 import { fmt } from "@/lib/utils";
 import { B, IB, VaChip } from "./ui";
 
-export default function VAsTab({ clients, attendance, setModal, onDelAtt }: {
+function mondayToEntry(m: VAAttendanceEntry): AttendanceEntry {
+  let notes = m.type;
+  if (m.reason) notes += ` — ${m.reason}`;
+  if (m.returnDate && m.returnDate !== m.date) notes += ` (returns ${fmt(m.returnDate)})`;
+  return {
+    id: `monday-${m.id}`, va: m.va, date: m.date,
+    late: m.late, absent: m.absent, ooz: false,
+    notes, shortNotice: m.shortNotice, submittedPHT: m.submittedPHT,
+  };
+}
+
+export default function VAsTab({ clients, attendance, mondayAtt, mondayAttLoading, onRefreshMondayAtt, setModal, onDelAtt }: {
   clients: Client[];
   attendance: AttendanceEntry[];
+  mondayAtt: VAAttendanceEntry[];
+  mondayAttLoading: boolean;
+  onRefreshMondayAtt: () => void;
   setModal: (m: { type: string }) => void;
   onDelAtt: (id: string) => void;
 }) {
@@ -23,12 +38,23 @@ export default function VAsTab({ clients, attendance, setModal, onDelAtt }: {
   const m2 = new Date(viewYear, viewMonth + 1, 0).toISOString().slice(0, 10);
   const monthLabel = new Date(viewYear, viewMonth, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
 
-  const monthEntries = attendance.filter((e) => e.date >= m1 && e.date <= m2);
+  // Merge local (OOZ-focused) + Monday (late/absent) entries, deduplicate by id
+  // Only include local entries for our VAs (filter out other teams' entries)
+  const vasSet = new Set<string>(VAS);
+  const mondayEntries = useMemo(() => mondayAtt.map(mondayToEntry), [mondayAtt]);
+  const allAttendance = useMemo(() => {
+    const seen = new Set<string>();
+    return [...mondayEntries, ...attendance.filter((e) => vasSet.has(e.va))]
+      .filter((e) => { if (seen.has(e.id)) return false; seen.add(e.id); return true; });
+  }, [mondayEntries, attendance]);
+
+  const monthEntries = allAttendance.filter((e) => e.date >= m1 && e.date <= m2);
 
   const totalStrikes = VAS.reduce((sum, va) => {
     const e = monthEntries.filter((x) => x.va === va);
     const lates = e.filter((x) => x.late).length;
-    const absents = e.filter((x) => x.absent).length;
+    // Only count short-notice Monday absences + all local absences (not verified leaves)
+    const absents = e.filter((x) => x.absent && (x.shortNotice !== false)).length;
     return sum + Math.floor(lates / 3) + Math.floor(absents / 2);
   }, 0);
 
@@ -73,14 +99,28 @@ export default function VAsTab({ clients, attendance, setModal, onDelAtt }: {
               }}>›</button>
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ fontSize: 12, color: D.muted }}>
             <span style={{ fontWeight: 700, color: totalStrikes >= 3 ? D.red : totalStrikes > 0 ? D.amber : D.green }}>
               {totalStrikes}
             </span>
             {" "}team strike{totalStrikes !== 1 ? "s" : ""} this month
           </div>
-          <B sm onClick={() => setModal({ type: "att" })}>+ Log entry</B>
+          <button
+            onClick={onRefreshMondayAtt}
+            disabled={mondayAttLoading}
+            title="Sync attendance from Monday"
+            style={{
+              background: "none", border: `1px solid ${D.border}`, borderRadius: 6,
+              padding: "4px 9px", cursor: mondayAttLoading ? "default" : "pointer",
+              color: mondayAttLoading ? D.hint : D.muted, fontSize: 11, fontFamily: "inherit",
+              display: "flex", alignItems: "center", gap: 4,
+            }}
+          >
+            <span style={{ display: "inline-block", animation: mondayAttLoading ? "spin 1s linear infinite" : "none" }}>↻</span>
+            {mondayAttLoading ? "Syncing…" : "Sync"}
+          </button>
+          <B sm onClick={() => setModal({ type: "att" })}>+ Log OOZ</B>
         </div>
       </div>
 
@@ -89,7 +129,8 @@ export default function VAsTab({ clients, attendance, setModal, onDelAtt }: {
         {VAS.map((va) => {
           const entries = monthEntries.filter((e) => e.va === va);
           const lates = entries.filter((e) => e.late).length;
-          const absents = entries.filter((e) => e.absent).length;
+          const absents = entries.filter((e) => e.absent && (e.shortNotice !== false)).length;
+          const verifiedLeaves = entries.filter((e) => e.absent && e.shortNotice === false).length;
           const oozs = entries.filter((e) => e.ooz).length;
           const strikes = Math.floor(lates / 3) + Math.floor(absents / 2);
           const attendRate = entries.length > 0
@@ -106,6 +147,7 @@ export default function VAsTab({ clients, attendance, setModal, onDelAtt }: {
             [clients.filter((c) => c.va === va).length, "Clients", null],
             [lates, "Late", lates > 0 ? D.amber : null],
             [absents, "Absent", absents > 0 ? D.red : null],
+            [verifiedLeaves, "Verified", verifiedLeaves > 0 ? D.green : null],
             [oozs, "OoZ", oozs > 0 ? D.amber : null],
           ];
 
@@ -136,7 +178,7 @@ export default function VAsTab({ clients, attendance, setModal, onDelAtt }: {
               </div>
 
               {/* Stat bubbles */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 8 }}>
                 {stats.map(([v, l, c]) => (
                   <div key={l} style={{
                     textAlign: "center", background: D.bg3, borderRadius: 8,
@@ -204,28 +246,65 @@ export default function VAsTab({ clients, attendance, setModal, onDelAtt }: {
                     </td>
                   </tr>
                 )
-                : filteredLog.map((e) => (
-                  <tr key={e.id} className="qcl-row" style={{ background: D.bg2 }}>
-                    <td style={td}>{fmt(e.date)}</td>
-                    <td style={td}><VaChip va={e.va} /></td>
-                    <td style={td}>{e.late
-                      ? <span style={{ color: D.amber, fontWeight: 600 }}>Late</span>
-                      : <span style={{ color: D.hint }}>—</span>}
-                    </td>
-                    <td style={td}>{e.absent
-                      ? <span style={{ color: D.red, fontWeight: 600 }}>Absent</span>
-                      : <span style={{ color: D.hint }}>—</span>}
-                    </td>
-                    <td style={td}>{e.ooz
-                      ? <span style={{ color: D.amber, fontWeight: 600 }}>Yes</span>
-                      : <span style={{ color: D.hint }}>—</span>}
-                    </td>
-                    <td style={{ ...td, color: D.muted, maxWidth: 220 }}>
-                      {e.notes || <span style={{ color: D.hint }}>—</span>}
-                    </td>
-                    <td style={td}><IB danger onClick={() => onDelAtt(e.id)}>✕</IB></td>
-                  </tr>
-                ))
+                : filteredLog.map((e) => {
+                  const fromMonday = e.id.startsWith("monday-");
+                  return (
+                    <tr key={e.id} className="qcl-row" style={{ background: D.bg2 }}>
+                      <td style={td}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <div>
+                            <div>{fmt(e.date)}</div>
+                            {e.submittedPHT && (
+                              <div style={{ fontSize: 10, color: D.hint, marginTop: 1 }}>
+                                filed {e.submittedPHT} CST
+                              </div>
+                            )}
+                          </div>
+                          {fromMonday && (
+                            <span style={{
+                              fontSize: 9, fontWeight: 700, letterSpacing: "0.04em",
+                              color: "#FF7D4F", background: "#FF7D4F18",
+                              border: "1px solid #FF7D4F35", borderRadius: 4, padding: "1px 5px",
+                            }}>MON</span>
+                          )}
+                        </div>
+                      </td>
+                      <td style={td}><VaChip va={e.va} /></td>
+                      <td style={td}>{e.late
+                        ? <span style={{ color: D.amber, fontWeight: 600 }}>Late</span>
+                        : <span style={{ color: D.hint }}>—</span>}
+                      </td>
+                      <td style={td}>{e.absent ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                          <span style={{ color: e.shortNotice ? D.red : D.green, fontWeight: 600 }}>
+                            {e.shortNotice ? "Absent" : "Leave"}
+                          </span>
+                          {e.shortNotice && (
+                            <span style={{
+                              fontSize: 10, fontWeight: 700, color: D.red,
+                              background: `${D.red}18`, border: `1px solid ${D.red}35`,
+                              borderRadius: 4, padding: "1px 5px", letterSpacing: "0.02em",
+                            }}>⚠ short notice</span>
+                          )}
+                        </div>
+                      ) : <span style={{ color: D.hint }}>—</span>}
+                      </td>
+                      <td style={td}>{e.ooz
+                        ? <span style={{ color: D.amber, fontWeight: 600 }}>Yes</span>
+                        : <span style={{ color: D.hint }}>—</span>}
+                      </td>
+                      <td style={{ ...td, color: D.muted, maxWidth: 260, fontSize: 12 }}>
+                        {e.notes || <span style={{ color: D.hint }}>—</span>}
+                      </td>
+                      <td style={td}>
+                        {fromMonday
+                          ? <span style={{ fontSize: 11, color: D.hint }}>auto</span>
+                          : <IB danger onClick={() => onDelAtt(e.id)}>✕</IB>
+                        }
+                      </td>
+                    </tr>
+                  );
+                })
               }
             </tbody>
           </table>
