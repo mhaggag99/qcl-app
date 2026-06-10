@@ -1,5 +1,6 @@
 "use client";
 import React, { useState } from "react";
+import DEMO from "@/lib/demo";
 import type { Client } from "@/types";
 import { useTheme } from "@/lib/theme";
 import type { Palette } from "@/lib/constants";
@@ -94,7 +95,7 @@ export default function Detail({ c, onClose, onEdit, onNote, onToggleNote, onDel
       {/* Tab bar */}
       <div style={{ display: "flex", gap: 4, marginBottom: 14, borderBottom: `1px solid ${D.border}`, paddingBottom: 8 }}>
         {tabBtn("info", "Info & Notes")}
-        {tabBtn("emails", (
+        {!DEMO && tabBtn("emails", (
           <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
             <svg width={13} height={13} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
               <path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.91 1.528-1.145C21.69 2.28 24 3.434 24 5.457z" fill="#EA4335"/>

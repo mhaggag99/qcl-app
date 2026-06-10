@@ -79,3 +79,18 @@ export interface AttendanceEntry {
   ooz: boolean;
   notes: string;
 }
+
+export interface ActivityLog {
+  id: string;
+  date: string;
+  va: string;
+  clientId: string;
+  clientName: string;
+  pmName: string;
+  connReqSent: number;
+  inmailsSent: number;
+  liEventInvites: number;
+  interested: number;
+  registeredErt: number;
+  ts: string;
+}

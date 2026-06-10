@@ -13,16 +13,22 @@ import Clients from "./Clients";
 import RoundtableTab from "./RoundtableTab";
 import VAsTab from "./VAsTab";
 import MondayActivity from "./MondayActivity";
+import ActivityTab from "./ActivityTab";
+import DEMO from "@/lib/demo";
 
 type ModalState = { type: string; id?: string } | null;
 
-const TABS = [
+const ALL_TABS = [
   { id: "overview",   label: "Overview",          color: "#06b6d4" },
   { id: "clients",    label: "All Clients",        color: "#10b981" },
   { id: "roundtable", label: "Roundtable Status",  color: "#4ba3ff" },
   { id: "activity",   label: "Client Activity",    color: "#f97316" },
   { id: "vas",        label: "VA Tracker",         color: "#8b5cf6" },
 ];
+
+const TABS = DEMO
+  ? ALL_TABS.filter((t) => t.id !== "roundtable")
+  : ALL_TABS;
 
 export default function Dashboard() {
   const { D, toggle, isDark } = useTheme();
@@ -332,14 +338,14 @@ export default function Dashboard() {
           </div>
 
           {/* AI badge */}
-          <span style={{
+          {!DEMO && <span style={{
             fontSize: 9.5, fontWeight: 700, letterSpacing: "0.07em",
             background: isDark ? "rgba(155,127,245,0.10)" : D.aibg,
             color: D.purple, border: `1px solid ${D.purple}32`, borderRadius: 5,
             padding: "2.5px 8px",
             fontFamily: "'JetBrains Mono', monospace",
             WebkitTextFillColor: D.purple,
-          }}>✦ AI</span>
+          }}>✦ AI</span>}
         </div>
 
         {/* Right: LIVE + theme toggle + add client */}
@@ -399,10 +405,13 @@ export default function Dashboard() {
         {tab === "clients" && <Clients clients={clients} setModal={setModal as (m: { type: string; id: string }) => void} onDelete={deleteClient} onStatusChange={changeStatus} rtData={rtData} />}
         {tab === "roundtable" && <RoundtableTab clients={clients} data={rtData} loading={rtLoading} error={rtError} onLoad={loadRoundtable} />}
         {tab === "vas" && <VAsTab clients={clients} attendance={attendance} setModal={setModal as (m: { type: string }) => void} onDelAtt={delAtt} />}
-        {tab === "activity" && <MondayActivity clients={clients} data={actData} loading={actLoading} error={actError} onLoad={loadActivity} />}
+        {tab === "activity" && (DEMO
+          ? <ActivityTab />
+          : <MondayActivity clients={clients} data={actData} loading={actLoading} error={actError} onLoad={loadActivity} />
+        )}
       </div>
 
-      <QuickBar clients={clients} onAction={handleAIAction} setModal={setModal} setTab={setTab} />
+      {!DEMO && <QuickBar clients={clients} onAction={handleAIAction} setModal={setModal} setTab={setTab} />}
 
       <Modal open={modal?.type === "add"} onClose={() => setModal(null)} title="Add client">
         <ClientForm onSave={(f) => saveClient(f as unknown as Record<string, unknown>)} onClose={() => setModal(null)} />

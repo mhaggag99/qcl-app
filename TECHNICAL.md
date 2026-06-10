@@ -149,6 +149,22 @@ Single row (`id = 'current'`). Persists one active meeting draft.
 | action_items | TEXT | JSON: `MeetingActionItem[]` |
 | updated_at | TEXT | Last save timestamp |
 
+### Table: `activity_log`
+
+| Column | Type | Notes |
+|---|---|---|
+| id | TEXT PK | |
+| date | TEXT | YYYY-MM-DD |
+| va | TEXT | VA name |
+| client_id | TEXT | FK to clients.id |
+| client_name | TEXT | Denormalized |
+| pm_name | TEXT | PM name (for future multi-PM) |
+| conn_req_sent | INTEGER | Connection requests sent |
+| inmails_sent | INTEGER | InMails sent |
+| li_event_invites | INTEGER | LinkedIn event invites |
+| ts | TEXT | Created timestamp |
+| UNIQUE | — | (date, va, client_id) — one submission per VA per client per day |
+
 ### Table: `settings`
 
 Key-value store for feature flags and one-time seeds.
@@ -207,6 +223,10 @@ interface AttendanceEntry {
 - `POST /api/clients` `{ ...fields, note? }` → `Client`
 - `PUT /api/clients/[id]` `{ ...Partial<Client>, notesToAppend?, notesReplace? }` → `Client`
 - `DELETE /api/clients/[id]` → `{ ok: true }`
+
+### Activity Log
+- `GET /api/activity` → `ActivityLog[]` (all logs, newest first)
+- `POST /api/activity` `{ date, va, clientId, clientName, pmName, connReqSent, inmailsSent, liEventInvites }` → `ActivityLog` or `409` if duplicate (same VA + client + date)
 
 ### Attendance
 - `GET /api/attendance` → `AttendanceEntry[]`

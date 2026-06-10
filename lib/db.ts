@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
-import type { Client, AttendanceEntry, Note, Task, MeetingDraft } from "@/types";
+import type { Client, AttendanceEntry, Note, Task, MeetingDraft, ActivityLog } from "@/types";
 import { uid } from "./utils";
 
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -60,6 +60,19 @@ function initSchema(db: Database.Database): void {
       priority TEXT DEFAULT 'normal',
       ts TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS activity_log (
+      id TEXT PRIMARY KEY,
+      date TEXT NOT NULL,
+      va TEXT NOT NULL,
+      client_id TEXT NOT NULL,
+      client_name TEXT NOT NULL,
+      pm_name TEXT DEFAULT '',
+      conn_req_sent INTEGER DEFAULT 0,
+      inmails_sent INTEGER DEFAULT 0,
+      li_event_invites INTEGER DEFAULT 0,
+      ts TEXT NOT NULL,
+      UNIQUE(date, va, client_id)
+    );
     CREATE TABLE IF NOT EXISTS meeting_draft (
       id TEXT PRIMARY KEY,
       client_id TEXT DEFAULT '',
@@ -72,8 +85,10 @@ function initSchema(db: Database.Database): void {
   db.prepare(
     "INSERT OR IGNORE INTO meeting_draft (id, client_id, client_name, notes, action_items, updated_at) VALUES ('current', '', '', '', '[]', '')"
   ).run();
-  // Migration: add redzone column to existing databases
+  // Migrations
   try { db.exec("ALTER TABLE clients ADD COLUMN redzone INTEGER DEFAULT 0"); } catch {}
+  try { db.exec("ALTER TABLE activity_log ADD COLUMN interested INTEGER DEFAULT 0"); } catch {}
+  try { db.exec("ALTER TABLE activity_log ADD COLUMN registered_ert INTEGER DEFAULT 0"); } catch {}
 
   // One-time seed: May 2026 attendance (Arvi & Rob excluded — they left)
   const seeded = db.prepare("SELECT value FROM settings WHERE key = ?").get("seeded_may_2026_att");
@@ -286,6 +301,42 @@ export function getMeetingDraft(): MeetingDraft {
     actionItems: JSON.parse((row.action_items as string) || "[]"),
     updatedAt: (row.updated_at as string) || "",
   };
+}
+
+function rowToActivityLog(row: Record<string, unknown>): ActivityLog {
+  return {
+    id: row.id as string,
+    date: row.date as string,
+    va: row.va as string,
+    clientId: row.client_id as string,
+    clientName: row.client_name as string,
+    pmName: (row.pm_name as string) || "",
+    connReqSent: (row.conn_req_sent as number) || 0,
+    inmailsSent: (row.inmails_sent as number) || 0,
+    liEventInvites: (row.li_event_invites as number) || 0,
+    interested: (row.interested as number) || 0,
+    registeredErt: (row.registered_ert as number) || 0,
+    ts: row.ts as string,
+  };
+}
+
+export function getAllActivityLogs(): ActivityLog[] {
+  const rows = getDb().prepare("SELECT * FROM activity_log ORDER BY date DESC, ts DESC").all();
+  return (rows as Record<string, unknown>[]).map(rowToActivityLog);
+}
+
+export function createActivityLog(data: Omit<ActivityLog, "id" | "ts">): ActivityLog | { duplicate: true } {
+  const db = getDb();
+  const existing = db.prepare("SELECT id FROM activity_log WHERE date = ? AND va = ? AND client_id = ?")
+    .get(data.date, data.va, data.clientId);
+  if (existing) return { duplicate: true };
+  const id = uid();
+  const ts = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "2-digit", hour: "2-digit", minute: "2-digit" });
+  db.prepare(`
+    INSERT INTO activity_log (id, date, va, client_id, client_name, pm_name, conn_req_sent, inmails_sent, li_event_invites, interested, registered_ert, ts)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, data.date, data.va, data.clientId, data.clientName, data.pmName || "", data.connReqSent, data.inmailsSent, data.liEventInvites, data.interested, data.registeredErt, ts);
+  return rowToActivityLog(db.prepare("SELECT * FROM activity_log WHERE id = ?").get(id) as Record<string, unknown>);
 }
 
 export function saveMeetingDraft(data: Partial<MeetingDraft>): void {

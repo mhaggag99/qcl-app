@@ -66,8 +66,27 @@ Attendance tracking for your five VAs: **Claire**, **Rosalie**, **Aliah**, **Arv
 - 2 absences = 1 strike
 - Background turns red at 3+ strikes
 
-### Activity
-Live activity metrics from your Monday.com tracking board — connection requests, LI invites, inmails, and connections made per client. Click any client row to expand and see the daily breakdown.
+### Client Activity
+Daily VA outreach numbers — submitted each day by VAs via the VA Report form at `/va-report`. Shows per-client totals for connection requests, InMails, and LinkedIn event invites. Filter by VA or date range. Also shows a recent submissions log at the bottom.
+
+---
+
+## VA Daily Report
+
+VAs submit their daily outreach numbers at **http://localhost:3000/va-report** (or the hosted URL when live).
+
+On the form they fill in:
+- Their name (VA dropdown)
+- Which client they worked on
+- PM name
+- Date (auto-filled to today)
+- Number of connection requests sent
+- Number of InMails sent
+- Number of LinkedIn event invites sent
+
+The system blocks duplicate submissions — a VA can only submit once per client per day. If they try again, they'll see an error message.
+
+All submissions appear immediately in the **Client Activity** tab on the dashboard.
 
 ---
 

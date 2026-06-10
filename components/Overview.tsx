@@ -1,5 +1,6 @@
 "use client";
 import React from "react";
+import DEMO from "@/lib/demo";
 import type { Client } from "@/types";
 import { useTheme } from "@/lib/theme";
 import { fmt } from "@/lib/utils";
@@ -99,16 +100,15 @@ export default function Overview({ clients, setModal, onAddNote }: {
 
       {/* ── Right column: Calendar | (Inbox + Meeting Draft stacked) ── */}
       <div style={{ flex: 1, minWidth: 0, display: "flex", gap: 14, alignItems: "flex-start" }}>
-
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <CalendarPanel accent={D.green} />
-        </div>
-
+        {!DEMO && (
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <CalendarPanel accent={D.green} />
+          </div>
+        )}
         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 14 }}>
-          <InboxPanel />
+          {!DEMO && <InboxPanel />}
           <MeetingDraftPanel clients={clients} onAddNote={onAddNote} />
         </div>
-
       </div>
 
     </div>
