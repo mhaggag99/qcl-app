@@ -1,6 +1,7 @@
 "use client";
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
+import { QCLFull } from "@/components/QCLLogo";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -51,23 +52,10 @@ export default function LoginPage() {
         borderRadius: 16,
         padding: "40px 36px",
       }}>
-        {/* Logo/Title */}
-        <div style={{ textAlign: "center", marginBottom: 32 }}>
-          <div style={{
-            width: 48,
-            height: 48,
-            borderRadius: 12,
-            background: "linear-gradient(135deg, #4ba3ff 0%, #9b7ff5 100%)",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 22,
-            marginBottom: 16,
-          }}>Q</div>
-          <div style={{ color: "var(--qcl-text)", fontSize: 20, fontWeight: 700, letterSpacing: "-0.3px" }}>
-            QCL App
-          </div>
-          <div style={{ color: "rgba(216,227,245,0.45)", fontSize: 13, marginTop: 4 }}>
+        {/* Logo */}
+        <div style={{ textAlign: "center", marginBottom: 32, display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
+          <QCLFull height={64} />
+          <div style={{ color: "rgba(216,227,245,0.45)", fontSize: 13 }}>
             Sign in to your account
           </div>
         </div>

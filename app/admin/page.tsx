@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { QCLCompact } from "@/components/QCLLogo";
 
 interface AdminUser {
   id: string;
@@ -259,9 +260,9 @@ export default function AdminPage() {
       {/* Header */}
       <header style={s.header}>
         <div style={s.logo}>
-          <div style={s.logoMark}>A</div>
-          <div>
-            <div style={s.logoText}>QCL Admin</div>
+          <QCLCompact height={28} />
+          <div style={{ borderLeft: `1px solid ${C.border}`, paddingLeft: 12 }}>
+            <div style={s.logoText}>Admin Panel</div>
             <div style={s.logoSub}>User Management</div>
           </div>
         </div>

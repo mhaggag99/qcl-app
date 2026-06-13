@@ -17,6 +17,7 @@ import MondayActivity from "./MondayActivity";
 import ActivityTab from "./ActivityTab";
 import UserSettingsModal from "./UserSettingsModal";
 import DEMO from "@/lib/demo";
+import { QCLLoadingScreen, QCLCompact } from "./QCLLogo";
 
 interface SessionUser { id: string; email: string; name: string; role: string; }
 
@@ -270,31 +271,7 @@ export default function Dashboard() {
     );
   };
 
-  if (loading) return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100vh", background: "#060810", gap: 22 }}>
-      <div style={{ position: "relative", width: 52, height: 52 }}>
-        <svg width="52" height="52" viewBox="0 0 52 52" fill="none" style={{ animation: "hexRotate 8s linear infinite" }}>
-          <path d="M26 4L46 15.5V36.5L26 48L6 36.5V15.5L26 4Z" stroke="url(#lg1)" strokeWidth="1.2" fill="none" strokeLinejoin="round" strokeDasharray="128" style={{ animation: "dashSpin 2.4s cubic-bezier(0.4,0,0.6,1) infinite" }} />
-          <defs>
-            <linearGradient id="lg1" x1="6" y1="4" x2="46" y2="48" gradientUnits="userSpaceOnUse">
-              <stop stopColor="#4ba3ff" /><stop offset="1" stopColor="#8b5cf6" />
-            </linearGradient>
-          </defs>
-        </svg>
-        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "linear-gradient(135deg, #4ba3ff, #8b5cf6)", boxShadow: "0 0 10px rgba(75,163,255,0.6)", animation: "loadingPulse 1.4s ease-in-out infinite" }} />
-        </div>
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-        <div style={{ fontSize: 11, color: "#4a6080", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "0.18em", animation: "loadingPulse 2s ease-in-out infinite" }}>INITIALIZING SYSTEM</div>
-        <div style={{ display: "flex", gap: 4 }}>
-          {[0, 1, 2].map(i => (
-            <div key={i} style={{ width: 3, height: 3, borderRadius: "50%", background: "#4ba3ff", opacity: 0.4, animation: `ai-dot 1.4s ease-in-out ${i * 0.2}s infinite` }} />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
+  if (loading) return <QCLLoadingScreen />;
 
   return (
     <div className={`qcl-grain${isDark ? " qcl-scanlines" : ""}`} style={{
@@ -322,49 +299,20 @@ export default function Dashboard() {
         boxShadow: isDark ? "0 1px 0 rgba(255,255,255,0.03), 0 8px 40px rgba(0,0,0,0.4)" : "0 1px 0 rgba(0,0,0,0.05), 0 4px 20px rgba(0,0,0,0.04)",
         flexShrink: 0, position: "sticky", top: 0, zIndex: 20,
       }}>
-        {/* Left: logo mark + title */}
+        {/* Left: QCL logo + date */}
         <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
-          {/* Geometric logo mark */}
-          <div style={{
-            width: 34, height: 34, borderRadius: 9, flexShrink: 0,
-            background: isDark
-              ? "linear-gradient(135deg, rgba(75,163,255,0.14) 0%, rgba(139,92,246,0.14) 100%)"
-              : "linear-gradient(135deg, rgba(75,163,255,0.1) 0%, rgba(139,92,246,0.1) 100%)",
-            border: `1px solid ${isDark ? "rgba(75,163,255,0.22)" : "rgba(75,163,255,0.28)"}`,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            boxShadow: isDark ? "0 0 18px rgba(75,163,255,0.10), inset 0 1px 0 rgba(255,255,255,0.07)" : "none",
-            animation: isDark ? "logoGlow 5s ease-in-out infinite" : "none",
-          }}>
-            <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
-              <path d="M8 1.5L13.5 4.75V11.25L8 14.5L2.5 11.25V4.75L8 1.5Z" stroke="url(#qclG)" strokeWidth="1.4" strokeLinejoin="round" />
-              <defs>
-                <linearGradient id="qclG" x1="2.5" y1="1.5" x2="13.5" y2="14.5" gradientUnits="userSpaceOnUse">
-                  <stop stopColor="#4ba3ff" />
-                  <stop offset="1" stopColor="#8b5cf6" />
-                </linearGradient>
-              </defs>
-            </svg>
-          </div>
+          {/* Actual brand logo */}
+          <QCLCompact height={30} dark={isDark} />
 
           {/* Vertical divider */}
           <div style={{ width: 1, height: 22, background: isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.1)", flexShrink: 0 }} />
 
-          {/* Title + date */}
-          <div>
-            <div style={{
-              fontSize: 15, fontWeight: 600, lineHeight: 1.2,
-              fontFamily: "'Syne', sans-serif", letterSpacing: "-0.025em",
-              background: isDark ? "linear-gradient(135deg, #c8d8f0 20%, #5baeff 100%)" : "none",
-              WebkitBackgroundClip: isDark ? "text" : "unset",
-              WebkitTextFillColor: isDark ? "transparent" : D.text,
-              backgroundClip: isDark ? "text" : "unset",
-            }}>QCL Project Manager</div>
-            <div suppressHydrationWarning style={{
-              fontSize: 10, color: D.muted, marginTop: 1,
-              fontFamily: "'JetBrains Mono', monospace", letterSpacing: "0.04em",
-            }}>
-              {typeof window !== "undefined" ? new Date().toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" }).toUpperCase() : ""}
-            </div>
+          {/* Date */}
+          <div suppressHydrationWarning style={{
+            fontSize: 10, color: D.muted,
+            fontFamily: "'JetBrains Mono', monospace", letterSpacing: "0.04em",
+          }}>
+            {typeof window !== "undefined" ? new Date().toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" }).toUpperCase() : ""}
           </div>
 
           {/* AI badge */}

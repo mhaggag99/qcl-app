@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import type { Client, Task, AttendanceEntry, MeetingDraft, MeetingActionItem, Note, RoundtableEvent, ActivityLog } from "@/types";
+import { QCLCompact, QCLLoadingScreen } from "@/components/QCLLogo";
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
 
@@ -792,11 +793,8 @@ export default function MobilePage() {
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", paddingTop: "calc(10px + env(safe-area-inset-top))", background: C.bg2, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: "linear-gradient(135deg, #4ba3ff, #9b7ff5)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700 }}>Q</div>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>QCL</div>
-            {user && <div style={{ fontSize: 10, color: C.muted }}>{user.name}</div>}
-          </div>
+          <QCLCompact height={28} />
+          {user && <div style={{ fontSize: 11, color: C.muted, borderLeft: `1px solid ${C.border}`, paddingLeft: 10 }}>{user.name}</div>}
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <a href="/" style={{ fontSize: 12, color: C.muted, textDecoration: "none" }}>Desktop</a>
@@ -811,8 +809,8 @@ export default function MobilePage() {
 
       {/* Content */}
       {loading ? (
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <Spinner />
+        <div style={{ flex: 1, overflow: "hidden" }}>
+          <QCLLoadingScreen />
         </div>
       ) : (
         <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
