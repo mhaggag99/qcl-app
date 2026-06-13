@@ -26,11 +26,12 @@ function resolveClient(mondayName: string, list: Client[]): string | null {
   return match ? match.name : null;
 }
 
-export default function Overview({ clients, rtData, setModal, onAddNote }: {
+export default function Overview({ clients, rtData, setModal, onAddNote, compact }: {
   clients: Client[];
   rtData: { boardName: string; events: RoundtableEvent[] } | null;
   setModal: (m: { type: string; id: string }) => void;
   onAddNote: (clientId: string, text: string) => void;
+  compact?: boolean;
 }) {
   const { D } = useTheme();
 
@@ -75,10 +76,10 @@ export default function Overview({ clients, rtData, setModal, onAddNote }: {
   const td: React.CSSProperties = { padding: "9px 10px", borderBottom: `1px solid ${D.border}`, verticalAlign: "middle" };
 
   return (
-    <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+    <div style={{ display: "flex", gap: 14, alignItems: "flex-start", flexDirection: compact ? "column" : "row" }}>
 
       {/* ── Left column: Upcoming ERTs + Tasks ── */}
-      <div style={{ flex: "0 0 44%", display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ flex: compact ? "1 1 100%" : "0 0 44%", width: compact ? "100%" : undefined, display: "flex", flexDirection: "column", gap: 14 }}>
 
       {/* Upcoming ERTs — blue */}
       <div style={{ background: D.bg2, border: `1px solid ${D.blue}60`, borderRadius: 12, overflow: "hidden", boxShadow: `0 0 0 1px ${D.blue}15, 0 4px 20px ${D.blue}12` }}>

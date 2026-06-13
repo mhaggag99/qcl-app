@@ -1,469 +1,517 @@
 "use client";
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import type { Client, Task, MeetingDraft, MeetingActionItem, Note } from "@/types";
+import { useTheme } from "@/lib/theme";
+import { uid, tsNow, fmt } from "@/lib/utils";
+import { B, Modal } from "@/components/ui";
+import type { Client, AttendanceEntry, Note, RoundtableEvent, ActivityRow } from "@/types";
+import type { VAAttendanceEntry } from "@/lib/monday";
+import DEMO from "@/lib/demo";
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// Desktop components — reused as-is
+import Overview       from "@/components/Overview";
+import Clients        from "@/components/Clients";
+import RoundtableTab  from "@/components/RoundtableTab";
+import VAsTab         from "@/components/VAsTab";
+import MondayActivity from "@/components/MondayActivity";
+import ActivityTab    from "@/components/ActivityTab";
+import ClientForm     from "@/components/ClientForm";
+import AttForm        from "@/components/AttForm";
+import Detail         from "@/components/Detail";
+import QuickBar       from "@/components/QuickBar";
+import UserSettingsModal from "@/components/UserSettingsModal";
 
-const C = {
-  bg: "#0d1117", bg2: "#161b22", bg3: "#1c2128",
-  border: "rgba(255,255,255,0.08)", border2: "rgba(255,255,255,0.14)",
-  text: "#d8e3f5", muted: "rgba(216,227,245,0.45)",
-  blue: "#4ba3ff", green: "#38ef7d", red: "#ff4d6a",
-  amber: "#f59e0b", purple: "#9b7ff5",
-};
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-const STATUS_COLORS: Record<string, string> = {
-  "New Client": C.blue, "Performing": C.green,
-  "Slow Generating": C.amber, "At Risk": C.red, "Stopped": C.muted,
-};
+interface SessionUser { id: string; email: string; name: string; role: string; }
+type ModalState = { type: string; id?: string } | null;
+type Tab = "overview" | "clients" | "roundtable" | "activity" | "vas";
 
-const PRIORITY_COLORS: Record<string, string> = {
-  normal: C.muted, important: C.amber, urgent: C.red,
-};
+const ALL_TABS: { id: Tab; label: string; icon: string; color: string }[] = [
+  { id: "overview",   label: "Overview",    icon: "📊", color: "#06b6d4" },
+  { id: "clients",    label: "Clients",     icon: "👥", color: "#10b981" },
+  { id: "roundtable", label: "Roundtable",  icon: "🔄", color: "#4ba3ff" },
+  { id: "activity",   label: "Activity",    icon: "📈", color: "#f97316" },
+  { id: "vas",        label: "VAs",         icon: "👤", color: "#8b5cf6" },
+];
 
-function uid() { return Math.random().toString(36).slice(2, 11); }
-function tsNow() {
-  return new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "2-digit", hour: "2-digit", minute: "2-digit" });
-}
-
-// ─── Shared styles ────────────────────────────────────────────────────────────
-
-const inp: React.CSSProperties = {
-  width: "100%", padding: "11px 14px", background: C.bg2,
-  border: `1px solid ${C.border2}`, borderRadius: 10,
-  color: C.text, fontSize: 15, outline: "none",
-  boxSizing: "border-box",
-};
-
-const card: React.CSSProperties = {
-  background: C.bg2, border: `1px solid ${C.border}`,
-  borderRadius: 12, padding: "14px 16px", marginBottom: 10,
-};
-
-// ─── Clients Tab ──────────────────────────────────────────────────────────────
-
-function ClientsTab() {
-  const [clients, setClients] = useState<Client[]>([]);
-  const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<Client | null>(null);
-  const [noteText, setNoteText] = useState("");
-  const [addingNote, setAddingNote] = useState(false);
-
-  useEffect(() => {
-    fetch("/api/clients").then(r => r.json()).then(d => setClients(d.clients ?? []));
-  }, []);
-
-  const filtered = clients.filter(c =>
-    c.name.toLowerCase().includes(search.toLowerCase()) ||
-    (c.va || "").toLowerCase().includes(search.toLowerCase())
-  );
-
-  async function addNote() {
-    if (!selected || !noteText.trim()) return;
-    setAddingNote(true);
-    const note: Note = { id: uid(), type: "gen", text: noteText.trim(), ts: tsNow() };
-    const res = await fetch(`/api/clients/${selected.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ notesToAppend: [note] }),
-    });
-    if (res.ok) {
-      const updated = await res.json();
-      setSelected(updated.client);
-      setClients(cs => cs.map(c => c.id === updated.client.id ? updated.client : c));
-      setNoteText("");
-    }
-    setAddingNote(false);
-  }
-
-  // ── Detail view ──
-  if (selected) {
-    const recentNotes = [...(selected.notes ?? [])].reverse().slice(0, 8);
-    return (
-      <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-        <div style={{ padding: "0 16px 12px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
-          <button onClick={() => setSelected(null)} style={{ background: "none", border: "none", color: C.blue, fontSize: 15, padding: "8px 0", cursor: "pointer" }}>
-            ← Back
-          </button>
-          <div style={{ fontSize: 18, fontWeight: 700, marginTop: 4 }}>{selected.name}</div>
-          <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-            <span style={{ padding: "3px 10px", borderRadius: 20, fontSize: 12, fontWeight: 600, background: `${STATUS_COLORS[selected.status] ?? C.muted}18`, border: `1px solid ${STATUS_COLORS[selected.status] ?? C.muted}35`, color: STATUS_COLORS[selected.status] ?? C.muted }}>
-              {selected.status}
-            </span>
-            {selected.va && <span style={{ fontSize: 12, color: C.muted, padding: "3px 8px", background: C.bg3, borderRadius: 20 }}>👤 {selected.va}</span>}
-            {selected.ert && <span style={{ fontSize: 12, color: C.muted, padding: "3px 8px", background: C.bg3, borderRadius: 20 }}>📅 {selected.ert}</span>}
-            {selected.attendees > 0 && <span style={{ fontSize: 12, color: C.blue, padding: "3px 8px", background: C.bg3, borderRadius: 20 }}>✓ {selected.attendees} attending</span>}
-          </div>
-        </div>
-
-        <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px" }}>
-          {/* Add note */}
-          <div style={{ marginBottom: 16 }}>
-            <textarea
-              value={noteText}
-              onChange={e => setNoteText(e.target.value)}
-              placeholder="Add a note…"
-              rows={3}
-              style={{ ...inp, resize: "none" }}
-            />
-            <button
-              onClick={addNote}
-              disabled={addingNote || !noteText.trim()}
-              style={{
-                marginTop: 8, width: "100%", padding: "11px",
-                background: noteText.trim() ? "rgba(75,163,255,0.15)" : C.bg3,
-                border: `1px solid ${noteText.trim() ? "rgba(75,163,255,0.35)" : C.border}`,
-                borderRadius: 10, color: noteText.trim() ? C.blue : C.muted,
-                fontSize: 15, fontWeight: 600, cursor: noteText.trim() ? "pointer" : "default",
-              }}
-            >{addingNote ? "Saving…" : "Add Note"}</button>
-          </div>
-
-          {/* Notes list */}
-          {recentNotes.length > 0 && (
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: C.muted, marginBottom: 8 }}>Notes</div>
-              {recentNotes.map(n => (
-                <div key={n.id} style={{ ...card, marginBottom: 8 }}>
-                  <div style={{ fontSize: 14, color: C.text, lineHeight: 1.5 }}>{n.text}</div>
-                  <div style={{ fontSize: 11, color: C.muted, marginTop: 6 }}>{n.ts}</div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // ── List view ──
-  return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <div style={{ padding: "0 16px 12px", flexShrink: 0 }}>
-        <input style={inp} placeholder="Search clients or VA…" value={search} onChange={e => setSearch(e.target.value)} />
-      </div>
-      <div style={{ flex: 1, overflowY: "auto", padding: "0 16px" }}>
-        {filtered.length === 0 && (
-          <div style={{ textAlign: "center", color: C.muted, paddingTop: 40, fontSize: 14 }}>No clients found</div>
-        )}
-        {filtered.map(c => (
-          <div key={c.id} style={{ ...card, cursor: "pointer", borderLeft: c.redzone ? `3px solid ${C.red}` : `3px solid transparent` }} onClick={() => setSelected(c)}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div style={{ fontWeight: 600, fontSize: 15 }}>{c.name}</div>
-              <span style={{ padding: "2px 9px", borderRadius: 20, fontSize: 11, fontWeight: 600, background: `${STATUS_COLORS[c.status] ?? C.muted}18`, color: STATUS_COLORS[c.status] ?? C.muted, flexShrink: 0, marginLeft: 8 }}>
-                {c.status}
-              </span>
-            </div>
-            <div style={{ marginTop: 4, display: "flex", gap: 12, fontSize: 12, color: C.muted }}>
-              {c.va && <span>👤 {c.va}</span>}
-              {c.ert && <span>📅 {c.ert}</span>}
-              {c.attendees > 0 && <span style={{ color: C.blue }}>✓ {c.attendees}</span>}
-            </div>
-            {c.flag && <div style={{ marginTop: 6, fontSize: 12, color: C.amber }}>⚑ {c.flag}</div>}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ─── Tasks Tab ────────────────────────────────────────────────────────────────
-
-function TasksTab() {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [newTask, setNewTask] = useState("");
-  const [adding, setAdding] = useState(false);
-
-  useEffect(() => {
-    fetch("/api/tasks").then(r => r.json()).then(d => setTasks(d.tasks ?? []));
-  }, []);
-
-  async function addTask() {
-    if (!newTask.trim()) return;
-    setAdding(true);
-    const res = await fetch("/api/tasks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: newTask.trim() }),
-    });
-    if (res.ok) {
-      const d = await res.json();
-      setTasks(ts => [d.task, ...ts]);
-      setNewTask("");
-    }
-    setAdding(false);
-  }
-
-  async function toggleTask(task: Task) {
-    const res = await fetch(`/api/tasks/${task.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ done: !task.done }),
-    });
-    if (res.ok) {
-      setTasks(ts => ts.map(t => t.id === task.id ? { ...t, done: !t.done } : t));
-    }
-  }
-
-  const active = tasks.filter(t => !t.done);
-  const done = tasks.filter(t => t.done);
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <div style={{ padding: "0 16px 12px", flexShrink: 0 }}>
-        <div style={{ display: "flex", gap: 8 }}>
-          <input
-            style={{ ...inp, flex: 1 }}
-            placeholder="Add a task…"
-            value={newTask}
-            onChange={e => setNewTask(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && addTask()}
-          />
-          <button
-            onClick={addTask}
-            disabled={adding || !newTask.trim()}
-            style={{ padding: "11px 18px", borderRadius: 10, background: "rgba(75,163,255,0.15)", border: "1px solid rgba(75,163,255,0.3)", color: C.blue, fontSize: 15, fontWeight: 600, cursor: "pointer", flexShrink: 0 }}
-          >Add</button>
-        </div>
-      </div>
-
-      <div style={{ flex: 1, overflowY: "auto", padding: "0 16px" }}>
-        {active.length === 0 && done.length === 0 && (
-          <div style={{ textAlign: "center", color: C.muted, paddingTop: 40, fontSize: 14 }}>No tasks yet</div>
-        )}
-        {active.map(t => (
-          <div key={t.id} style={{ ...card, display: "flex", alignItems: "flex-start", gap: 12 }}>
-            <div
-              onClick={() => toggleTask(t)}
-              style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${PRIORITY_COLORS[t.priority]}`, flexShrink: 0, marginTop: 1, cursor: "pointer", background: "transparent" }}
-            />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 15, color: C.text }}>{t.text}</div>
-              {t.dueDate && <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>Due {t.dueDate}</div>}
-            </div>
-            {t.priority !== "normal" && (
-              <span style={{ fontSize: 11, fontWeight: 700, color: PRIORITY_COLORS[t.priority], flexShrink: 0 }}>
-                {t.priority === "urgent" ? "!!" : "★"}
-              </span>
-            )}
-          </div>
-        ))}
-        {done.length > 0 && (
-          <>
-            <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: C.muted, margin: "16px 0 8px" }}>Done ({done.length})</div>
-            {done.map(t => (
-              <div key={t.id} style={{ ...card, display: "flex", alignItems: "center", gap: 12, opacity: 0.5 }}>
-                <div
-                  onClick={() => toggleTask(t)}
-                  style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${C.green}`, flexShrink: 0, cursor: "pointer", background: "rgba(56,239,125,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}
-                >
-                  <span style={{ color: C.green, fontSize: 12 }}>✓</span>
-                </div>
-                <div style={{ fontSize: 15, color: C.muted, textDecoration: "line-through" }}>{t.text}</div>
-              </div>
-            ))}
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Meeting Tab ──────────────────────────────────────────────────────────────
-
-function MeetingTab() {
-  const [clients, setClients] = useState<Client[]>([]);
-  const [draft, setDraft] = useState<MeetingDraft>({ clientId: "", clientName: "", notes: "", actionItems: [], updatedAt: "" });
-  const [newItem, setNewItem] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [pushed, setPushed] = useState(false);
-
-  useEffect(() => {
-    fetch("/api/clients").then(r => r.json()).then(d => setClients(d.clients ?? []));
-    fetch("/api/meeting-draft").then(r => r.json()).then(d => { if (d.draft) setDraft(d.draft); });
-  }, []);
-
-  async function saveDraft(updated: MeetingDraft) {
-    setSaving(true);
-    await fetch("/api/meeting-draft", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(updated),
-    });
-    setSaving(false);
-  }
-
-  function updateNotes(notes: string) {
-    const updated = { ...draft, notes };
-    setDraft(updated);
-    saveDraft(updated);
-  }
-
-  function selectClient(clientId: string) {
-    const c = clients.find(c => c.id === clientId);
-    const updated = { ...draft, clientId, clientName: c?.name ?? "" };
-    setDraft(updated);
-    saveDraft(updated);
-  }
-
-  function addItem() {
-    if (!newItem.trim()) return;
-    const item: MeetingActionItem = { id: uid(), text: newItem.trim(), done: false };
-    const updated = { ...draft, actionItems: [...draft.actionItems, item] };
-    setDraft(updated);
-    saveDraft(updated);
-    setNewItem("");
-  }
-
-  function toggleItem(id: string) {
-    const updated = { ...draft, actionItems: draft.actionItems.map(i => i.id === id ? { ...i, done: !i.done } : i) };
-    setDraft(updated);
-    saveDraft(updated);
-  }
-
-  async function pushToTasks() {
-    const undone = draft.actionItems.filter(i => !i.done);
-    if (!undone.length) return;
-    for (const item of undone) {
-      await fetch("/api/tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: draft.clientName ? `${draft.clientName} — ${item.text}` : item.text }),
-      });
-    }
-    setPushed(true);
-    setTimeout(() => setPushed(false), 2000);
-  }
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflowY: "auto", padding: "0 16px 16px" }}>
-      {/* Client selector */}
-      <div style={{ marginBottom: 12 }}>
-        <select
-          value={draft.clientId}
-          onChange={e => selectClient(e.target.value)}
-          style={{ ...inp, color: draft.clientId ? C.text : C.muted }}
-        >
-          <option value="">Select client…</option>
-          {clients.filter(c => c.status !== "Stopped").map(c => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </select>
-      </div>
-
-      {/* Notes */}
-      <div style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: C.muted, marginBottom: 6 }}>Meeting Notes</div>
-        <textarea
-          value={draft.notes}
-          onChange={e => updateNotes(e.target.value)}
-          placeholder="Notes from the meeting…"
-          rows={5}
-          style={{ ...inp, resize: "none", lineHeight: 1.6 }}
-        />
-        {saving && <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>Saving…</div>}
-      </div>
-
-      {/* Action items */}
-      <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: C.muted, marginBottom: 8 }}>Action Items</div>
-        {draft.actionItems.map(item => (
-          <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-            <div
-              onClick={() => toggleItem(item.id)}
-              style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${item.done ? C.green : C.border2}`, flexShrink: 0, cursor: "pointer", background: item.done ? "rgba(56,239,125,0.15)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}
-            >
-              {item.done && <span style={{ color: C.green, fontSize: 12 }}>✓</span>}
-            </div>
-            <span style={{ fontSize: 14, color: item.done ? C.muted : C.text, textDecoration: item.done ? "line-through" : "none" }}>{item.text}</span>
-          </div>
-        ))}
-        <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-          <input style={{ ...inp, flex: 1 }} placeholder="Add action item…" value={newItem} onChange={e => setNewItem(e.target.value)} onKeyDown={e => e.key === "Enter" && addItem()} />
-          <button onClick={addItem} style={{ padding: "11px 16px", borderRadius: 10, background: "rgba(75,163,255,0.12)", border: "1px solid rgba(75,163,255,0.25)", color: C.blue, fontSize: 15, cursor: "pointer", flexShrink: 0 }}>+</button>
-        </div>
-      </div>
-
-      {/* Push to tasks */}
-      {draft.actionItems.some(i => !i.done) && (
-        <button
-          onClick={pushToTasks}
-          style={{ width: "100%", padding: "12px", borderRadius: 10, background: pushed ? "rgba(56,239,125,0.12)" : "rgba(155,127,245,0.12)", border: `1px solid ${pushed ? "rgba(56,239,125,0.3)" : "rgba(155,127,245,0.3)"}`, color: pushed ? C.green : C.purple, fontSize: 15, fontWeight: 600, cursor: "pointer" }}
-        >{pushed ? "✓ Pushed to Tasks" : "Push to Tasks"}</button>
-      )}
-    </div>
-  );
-}
+const TABS = DEMO ? ALL_TABS.filter(t => t.id !== "roundtable") : ALL_TABS;
 
 // ─── Main mobile page ─────────────────────────────────────────────────────────
 
-type Tab = "clients" | "tasks" | "meeting";
-
-const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: "clients", label: "Clients", icon: "👥" },
-  { id: "tasks",   label: "Tasks",   icon: "✓" },
-  { id: "meeting", label: "Meeting", icon: "📝" },
-];
-
 export default function MobilePage() {
   const router = useRouter();
-  const [tab, setTab] = useState<Tab>("clients");
-  const [user, setUser] = useState<{ name: string } | null>(null);
+  const { D, toggle, isDark } = useTheme();
 
+  // ── Auth ──
+  const [user, setUser] = useState<SessionUser | null>(null);
+
+  // ── Data ──
+  const [clients,    setClients]    = useState<Client[]>([]);
+  const [attendance, setAttendance] = useState<AttendanceEntry[]>([]);
+  const [loading,    setLoading]    = useState(true);
+
+  // ── Tabs / UI ──
+  const [tab,          setTab]         = useState<Tab>("overview");
+  const [modal,        setModal]       = useState<ModalState>(null);
+  const [showSettings, setShowSettings]= useState(false);
+
+  // ── Monday / external data ──
+  const [rtData,    setRtData]    = useState<{ boardName: string; events: RoundtableEvent[] } | null>(null);
+  const [rtLoading, setRtLoading] = useState(false);
+  const [rtError,   setRtError]   = useState("");
+  const [actData,    setActData]   = useState<{ boardName: string; rows: ActivityRow[] } | null>(null);
+  const [actLoading, setActLoading]= useState(false);
+  const [actError,   setActError]  = useState("");
+  const [mondayAtt,        setMondayAtt]       = useState<VAAttendanceEntry[]>([]);
+  const [mondayAttLoading, setMondayAttLoading]= useState(false);
+
+  // ── Bootstrap ──
   useEffect(() => {
     fetch("/api/auth/me").then(r => r.json()).then(d => {
       if (!d.user) { router.push("/login"); return; }
-      if (d.user.role === "admin") { router.push("/admin"); return; }
       setUser(d.user);
     });
-  }, [router]);
+    Promise.all([
+      fetch("/api/clients").then(r => r.json()),
+      fetch("/api/attendance").then(r => r.json()),
+    ]).then(([c, a]) => {
+      setClients(c?.clients ?? c ?? []);
+      setAttendance(Array.isArray(a) ? a : []);
+      setLoading(false);
+    });
+    loadRoundtable();
+    loadMondayAtt();
+  }, []);
+
+  // ── External data loaders ──
+  async function loadRoundtable() {
+    setRtLoading(true); setRtError("");
+    try {
+      const res  = await fetch("/api/monday/roundtable");
+      const data = await res.json();
+      if (!res.ok) {
+        setRtError(data.error === "monday_not_configured"
+          ? "Add your Monday API token in Settings to enable this."
+          : "Could not load roundtable board.");
+      } else { setRtData(data); }
+    } catch { setRtError("Failed to connect to Monday."); }
+    setRtLoading(false);
+  }
+
+  async function loadMondayAtt() {
+    setMondayAttLoading(true);
+    try {
+      const res = await fetch("/api/monday/va-attendance");
+      if (res.ok) setMondayAtt(await res.json());
+    } catch { /* silent */ }
+    setMondayAttLoading(false);
+  }
+
+  async function loadActivity() {
+    setActLoading(true); setActError("");
+    try {
+      const res  = await fetch("/api/monday/activity");
+      const data = await res.json();
+      if (!res.ok) {
+        setActError(data.error === "monday_not_configured"
+          ? "Add your Monday API token in Settings to enable this."
+          : "Could not load activity board.");
+      } else { setActData(data); }
+    } catch { setActError("Failed to connect to Monday."); }
+    setActLoading(false);
+  }
+
+  // ── Auth actions ──
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.href = "/login";
+  }
+
+  // ── Client CRUD ──
+  async function saveClient(f: Record<string, unknown>, id?: string) {
+    const t = tsNow();
+    if (id) {
+      const existing = clients.find(c => c.id === id);
+      if (!existing) return;
+      const notesToAppend: Note[] = [];
+      if (f.message   && f.message   !== existing.message)   notesToAppend.push({ id: uid(), type: "upd", text: "Outreach message updated.", ts: t });
+      if (f.targeting && f.targeting !== existing.targeting) notesToAppend.push({ id: uid(), type: "upd", text: "Targeting filters updated.", ts: t });
+      if (f.status    && f.status    !== existing.status)    notesToAppend.push({ id: uid(), type: "upd", text: `Status changed to ${f.status}.`, ts: t });
+      if (f.ert       && f.ert       !== existing.ert)       notesToAppend.push({ id: uid(), type: "upd", text: `ERT rescheduled to ${fmt(f.ert as string)}.`, ts: t });
+      if (f.note && (f.note as string).trim()) notesToAppend.push({ id: uid(), type: "gen", text: f.note as string, ts: t });
+      const updated = await fetch(`/api/clients/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...f, attendees: parseInt(String(f.attendees)) || 0, registered: parseInt(String(f.registered)) || 0, notesToAppend }),
+      }).then(r => r.json());
+      setClients(prev => prev.map(c => c.id === id ? updated : c));
+    } else {
+      const created = await fetch("/api/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...f, attendees: parseInt(String(f.attendees)) || 0, registered: parseInt(String(f.registered)) || 0 }),
+      }).then(r => r.json());
+      setClients(prev => [...prev, created]);
+    }
+    setModal(null);
+  }
+
+  async function deleteClient(id: string) {
+    if (!confirm("Delete this client?")) return;
+    await fetch(`/api/clients/${id}`, { method: "DELETE" });
+    setClients(prev => prev.filter(c => c.id !== id));
+  }
+
+  async function changeStatus(id: string, status: string) {
+    const updated = await fetch(`/api/clients/${id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    }).then(r => r.json());
+    setClients(prev => prev.map(c => c.id === id ? updated : c));
+  }
+
+  async function addNote(id: string, text: string, title?: string) {
+    const note: Note = { id: uid(), type: "gen", text, ts: tsNow(), ...(title ? { title } : {}) };
+    const updated = await fetch(`/api/clients/${id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ notesToAppend: [note] }),
+    }).then(r => r.json());
+    setClients(prev => prev.map(c => c.id === id ? updated : c));
+  }
+
+  async function toggleNote(clientId: string, noteId: string) {
+    const existing = clients.find(c => c.id === clientId);
+    if (!existing) return;
+    const notesReplace = existing.notes.map(n => n.id === noteId ? { ...n, done: !n.done } : n);
+    const updated = await fetch(`/api/clients/${clientId}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ notesReplace }),
+    }).then(r => r.json());
+    setClients(prev => prev.map(c => c.id === clientId ? updated : c));
+  }
+
+  async function deleteNote(clientId: string, noteId: string) {
+    const existing = clients.find(c => c.id === clientId);
+    if (!existing) return;
+    const notesReplace = existing.notes.filter(n => n.id !== noteId);
+    const updated = await fetch(`/api/clients/${clientId}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ notesReplace }),
+    }).then(r => r.json());
+    setClients(prev => prev.map(c => c.id === clientId ? updated : c));
+  }
+
+  // ── AI actions ──
+  async function handleAIAction({ type, clientId, fields, noteText, noteTitle, aiTagged }: {
+    type: string; clientId: string; fields?: Record<string, unknown>; noteText?: string; noteTitle?: string; aiTagged?: boolean;
+  }) {
+    const t = tsNow();
+    const existing = clients.find(c => c.id === clientId);
+    if (!existing) return;
+    const notesToAppend: Note[] = [];
+    if (type === "update" && fields) {
+      const upds: string[] = [];
+      if (fields.attendees !== undefined && fields.attendees !== existing.attendees) upds.push(`Attendees updated to ${fields.attendees}/20`);
+      if (fields.status    && fields.status    !== existing.status) upds.push(`Status changed to ${fields.status}`);
+      if (fields.ert       && fields.ert       !== existing.ert)    upds.push(`ERT rescheduled to ${fmt(fields.ert as string)}`);
+      if (fields.flag      && fields.flag      !== existing.flag)   upds.push(`Flag set: ${fields.flag}`);
+      if (fields.message   && fields.message   !== existing.message)   upds.push("Outreach message updated");
+      if (fields.targeting && fields.targeting !== existing.targeting) upds.push("Targeting updated");
+      if (upds.length) notesToAppend.push({ id: uid(), type: "ai", text: "✦ AI: " + upds.join(", ") + ".", ts: t });
+      if (noteText) notesToAppend.push({ id: uid(), type: "ai", text: noteText, ts: t });
+      const updated = await fetch(`/api/clients/${clientId}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...fields, notesToAppend }),
+      }).then(r => r.json());
+      setClients(prev => prev.map(c => c.id === clientId ? updated : c));
+    } else if (type === "note" && noteText) {
+      notesToAppend.push({ id: uid(), type: aiTagged ? "ai" : "gen", text: noteText, ts: t, ...(noteTitle ? { title: noteTitle } : {}) });
+      const updated = await fetch(`/api/clients/${clientId}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notesToAppend }),
+      }).then(r => r.json());
+      setClients(prev => prev.map(c => c.id === clientId ? updated : c));
+    }
+  }
+
+  // ── Attendance ──
+  async function saveAtt(f: Omit<AttendanceEntry, "id">) {
+    const created = await fetch("/api/attendance", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(f),
+    }).then(r => r.json());
+    setAttendance(prev => [...prev, created]);
+    setModal(null);
+  }
+
+  async function delAtt(id: string) {
+    if (id.startsWith("monday-")) return;
+    await fetch(`/api/attendance/${id}`, { method: "DELETE" });
+    setAttendance(prev => prev.filter(e => e.id !== id));
+  }
+
+  // ─── Render ───────────────────────────────────────────────────────────────
+
+  const mc = modal?.id ? clients.find(c => c.id === modal.id) : null;
+
+  // Loading screen
+  if (loading) return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100dvh", background: "#060810", gap: 22 }}>
+      <div style={{ position: "relative", width: 52, height: 52 }}>
+        <svg width="52" height="52" viewBox="0 0 52 52" fill="none" style={{ animation: "hexRotate 8s linear infinite" }}>
+          <path d="M26 4L46 15.5V36.5L26 48L6 36.5V15.5L26 4Z" stroke="url(#mlg1)" strokeWidth="1.2" fill="none" strokeLinejoin="round" strokeDasharray="128" style={{ animation: "dashSpin 2.4s cubic-bezier(0.4,0,0.6,1) infinite" }} />
+          <defs>
+            <linearGradient id="mlg1" x1="6" y1="4" x2="46" y2="48" gradientUnits="userSpaceOnUse">
+              <stop stopColor="#4ba3ff" /><stop offset="1" stopColor="#8b5cf6" />
+            </linearGradient>
+          </defs>
+        </svg>
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "linear-gradient(135deg, #4ba3ff, #8b5cf6)", boxShadow: "0 0 10px rgba(75,163,255,0.6)", animation: "loadingPulse 1.4s ease-in-out infinite" }} />
+        </div>
+      </div>
+      <div style={{ fontSize: 11, color: "#4a6080", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "0.18em", animation: "loadingPulse 2s ease-in-out infinite" }}>LOADING</div>
+    </div>
+  );
+
+  const activeTabMeta = TABS.find(t => t.id === tab)!;
 
   return (
-    <div style={{ height: "100dvh", display: "flex", flexDirection: "column", background: C.bg, color: C.text, fontFamily: "'Inter', sans-serif", overflow: "hidden" }}>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", paddingTop: "calc(12px + env(safe-area-inset-top))", background: C.bg2, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+    <div style={{
+      height: "100dvh", display: "flex", flexDirection: "column",
+      background: D.bg, color: D.text,
+      fontFamily: "'Inter', -apple-system, sans-serif", fontSize: 14,
+      overflow: "hidden",
+    }}>
+
+      {/* ── Top accent bar ── */}
+      <div style={{ height: 2, background: "linear-gradient(90deg, #06b6d4 0%, #10b981 25%, #4ba3ff 50%, #f97316 75%, #8b5cf6 100%)", flexShrink: 0 }} />
+
+      {/* ── Header ── */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "0 14px", height: 50,
+        paddingTop: `calc(0px + env(safe-area-inset-top))`,
+        borderBottom: `1px solid ${isDark ? "rgba(255,255,255,0.06)" : D.border}`,
+        background: isDark ? "rgba(6,8,16,0.92)" : D.bg2,
+        backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+        flexShrink: 0, zIndex: 20,
+      }}>
+        {/* Logo + title */}
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 30, height: 30, borderRadius: 8, background: "linear-gradient(135deg, #4ba3ff, #9b7ff5)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700 }}>Q</div>
-          <span style={{ fontWeight: 700, fontSize: 16 }}>QCL</span>
+          <div style={{
+            width: 30, height: 30, borderRadius: 8, flexShrink: 0,
+            background: isDark
+              ? "linear-gradient(135deg, rgba(75,163,255,0.14) 0%, rgba(139,92,246,0.14) 100%)"
+              : "linear-gradient(135deg, rgba(75,163,255,0.1) 0%, rgba(139,92,246,0.1) 100%)",
+            border: `1px solid ${isDark ? "rgba(75,163,255,0.22)" : "rgba(75,163,255,0.28)"}`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+              <path d="M8 1.5L13.5 4.75V11.25L8 14.5L2.5 11.25V4.75L8 1.5Z" stroke="url(#mG)" strokeWidth="1.4" strokeLinejoin="round" />
+              <defs>
+                <linearGradient id="mG" x1="2.5" y1="1.5" x2="13.5" y2="14.5" gradientUnits="userSpaceOnUse">
+                  <stop stopColor="#4ba3ff" /><stop offset="1" stopColor="#8b5cf6" />
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.1 }}>QCL</div>
+            {user && <div style={{ fontSize: 10, color: D.muted, lineHeight: 1 }}>{user.name}</div>}
+          </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {user && <span style={{ fontSize: 12, color: C.muted }}>{user.name}</span>}
-          <a href="/" style={{ fontSize: 12, color: C.blue, textDecoration: "none" }}>Desktop →</a>
+
+        {/* Right controls */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {/* Theme toggle */}
+          <button onClick={toggle} style={{
+            width: 30, height: 30, borderRadius: 7,
+            border: `1px solid ${isDark ? "rgba(255,255,255,0.08)" : D.border}`,
+            background: isDark ? "rgba(255,255,255,0.04)" : D.bg3,
+            color: D.muted, cursor: "pointer", fontSize: 13,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>{isDark ? "☀" : "◑"}</button>
+
+          {/* Settings */}
+          <button onClick={() => setShowSettings(true)} style={{
+            width: 30, height: 30, borderRadius: 7,
+            border: `1px solid ${isDark ? "rgba(255,255,255,0.08)" : D.border}`,
+            background: isDark ? "rgba(255,255,255,0.04)" : D.bg3,
+            color: D.muted, cursor: "pointer", fontSize: 14,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>⚙</button>
+
+          {/* Add client */}
+          <B primary sm onClick={() => setModal({ type: "add" })}>+ Client</B>
+
+          {/* Desktop link */}
+          <a href="/" style={{
+            fontSize: 11, color: D.blue, textDecoration: "none", fontWeight: 600,
+            padding: "5px 8px", borderRadius: 7,
+            border: `1px solid ${isDark ? "rgba(75,163,255,0.2)" : "rgba(75,163,255,0.3)"}`,
+            background: "rgba(75,163,255,0.06)",
+            whiteSpace: "nowrap",
+          }}>Desktop</a>
         </div>
       </div>
 
-      {/* Tab title */}
-      <div style={{ padding: "10px 16px 8px", background: C.bg, flexShrink: 0 }}>
-        <div style={{ fontSize: 20, fontWeight: 700 }}>
-          {TABS.find(t => t.id === tab)?.icon} {TABS.find(t => t.id === tab)?.label}
+      {/* ── Tab title strip ── */}
+      <div style={{
+        padding: "8px 14px 6px",
+        background: isDark ? "rgba(6,8,16,0.78)" : D.bg,
+        borderBottom: `1px solid ${isDark ? "rgba(255,255,255,0.04)" : D.border}`,
+        flexShrink: 0,
+      }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: activeTabMeta.color, display: "flex", alignItems: "center", gap: 6 }}>
+          <span>{activeTabMeta.icon}</span>
+          <span>{activeTabMeta.label}</span>
         </div>
       </div>
 
-      {/* Content */}
-      <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-        {tab === "clients" && <ClientsTab />}
-        {tab === "tasks"   && <TasksTab />}
-        {tab === "meeting" && <MeetingTab />}
+      {/* ── Tab content ── */}
+      <div key={tab} className="qcl-tab-content" style={{
+        flex: 1, overflowY: "auto", overflowX: "hidden",
+        padding: "16px 14px 8px",
+        position: "relative", zIndex: 1,
+      }}>
+        {/* Horizontal scroll wrapper for wide table views */}
+        <div style={{ overflowX: "auto", minWidth: 0 }}>
+          {tab === "overview" && (
+            <Overview
+              clients={clients}
+              rtData={rtData}
+              setModal={setModal as (m: { type: string; id: string }) => void}
+              onAddNote={addNote}
+              compact
+            />
+          )}
+          {tab === "clients" && (
+            <Clients
+              clients={clients}
+              setModal={setModal as (m: { type: string; id: string }) => void}
+              onDelete={deleteClient}
+              onStatusChange={changeStatus}
+              rtData={rtData}
+              onRefreshRt={loadRoundtable}
+              rtLoading={rtLoading}
+            />
+          )}
+          {tab === "roundtable" && (
+            <RoundtableTab
+              clients={clients}
+              data={rtData}
+              loading={rtLoading}
+              error={rtError}
+              onLoad={loadRoundtable}
+            />
+          )}
+          {tab === "activity" && (DEMO
+            ? <ActivityTab />
+            : <MondayActivity clients={clients} data={actData} loading={actLoading} error={actError} onLoad={loadActivity} />
+          )}
+          {tab === "vas" && (
+            <VAsTab
+              clients={clients}
+              attendance={attendance}
+              mondayAtt={mondayAtt}
+              mondayAttLoading={mondayAttLoading}
+              onRefreshMondayAtt={loadMondayAtt}
+              setModal={setModal as (m: { type: string }) => void}
+              onDelAtt={delAtt}
+            />
+          )}
+        </div>
       </div>
 
-      {/* Bottom tab bar */}
-      <div style={{ display: "flex", background: C.bg2, borderTop: `1px solid ${C.border}`, paddingBottom: "env(safe-area-inset-bottom)", flexShrink: 0 }}>
-        {TABS.map(t => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            style={{
-              flex: 1, padding: "12px 0", border: "none", cursor: "pointer",
-              background: "transparent",
-              borderTop: `2px solid ${tab === t.id ? C.blue : "transparent"}`,
-              display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
-            }}
-          >
-            <span style={{ fontSize: 20 }}>{t.icon}</span>
-            <span style={{ fontSize: 11, fontWeight: 600, color: tab === t.id ? C.blue : C.muted }}>{t.label}</span>
-          </button>
-        ))}
+      {/* ── Bottom tab bar ── */}
+      <div style={{
+        display: "flex",
+        background: isDark ? "rgba(6,8,16,0.95)" : D.bg2,
+        borderTop: `1px solid ${isDark ? "rgba(255,255,255,0.07)" : D.border}`,
+        paddingBottom: "env(safe-area-inset-bottom)",
+        flexShrink: 0, zIndex: 20,
+        backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+      }}>
+        {TABS.map(t => {
+          const active = tab === t.id;
+          return (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              style={{
+                flex: 1, padding: "10px 0 9px", border: "none", cursor: "pointer",
+                background: "transparent",
+                borderTop: `2px solid ${active ? t.color : "transparent"}`,
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
+                transition: "border-color 0.15s",
+              }}
+            >
+              <span style={{ fontSize: 18, lineHeight: 1 }}>{t.icon}</span>
+              <span style={{
+                fontSize: 9, fontWeight: 700, letterSpacing: "0.04em",
+                textTransform: "uppercase",
+                color: active ? t.color : D.muted,
+                transition: "color 0.15s",
+              }}>{t.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── QuickBar (AI) ── */}
+      {!DEMO && (
+        <QuickBar
+          clients={clients}
+          onAction={handleAIAction}
+          setModal={setModal}
+          setTab={(t: string) => setTab(t as Tab)}
+        />
+      )}
+
+      {/* ── Settings modal ── */}
+      {showSettings && (
+        <UserSettingsModal
+          userName={user?.name || ""}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
+
+      {/* ── Client modals ── */}
+      <Modal open={modal?.type === "add"} onClose={() => setModal(null)} title="Add client">
+        <ClientForm onSave={f => saveClient(f as unknown as Record<string, unknown>)} onClose={() => setModal(null)} />
+      </Modal>
+      <Modal open={modal?.type === "edit" && !!mc} onClose={() => setModal(null)} title="Edit client">
+        {mc && <ClientForm init={mc} onSave={f => saveClient(f as unknown as Record<string, unknown>, modal!.id)} onClose={() => setModal(null)} />}
+      </Modal>
+      <Modal open={modal?.type === "view" && !!mc} onClose={() => setModal(null)} title={mc?.name || ""} wide>
+        {mc && <Detail c={mc} onClose={() => setModal(null)} onEdit={id => setModal({ type: "edit", id })} onNote={addNote} onToggleNote={toggleNote} onDeleteNote={deleteNote} />}
+      </Modal>
+      <Modal open={modal?.type === "att"} onClose={() => setModal(null)} title="Log attendance entry">
+        <AttForm onSave={saveAtt} onClose={() => setModal(null)} />
+      </Modal>
+
+      {/* Logout floating button */}
+      <div style={{
+        position: "fixed", bottom: "calc(70px + env(safe-area-inset-bottom))", right: 16,
+        display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8,
+        zIndex: 15, pointerEvents: "none",
+      }}>
+        <button
+          onClick={logout}
+          style={{
+            pointerEvents: "auto",
+            padding: "7px 12px", borderRadius: 20,
+            background: isDark ? "rgba(6,8,16,0.85)" : D.bg2,
+            border: `1px solid ${isDark ? "rgba(255,255,255,0.10)" : D.border}`,
+            color: D.muted, fontSize: 11, fontWeight: 600, cursor: "pointer",
+            backdropFilter: "blur(12px)", fontFamily: "inherit",
+            display: "flex", alignItems: "center", gap: 5,
+          }}
+        >
+          <span style={{ fontSize: 12 }}>⏻</span> Sign out
+        </button>
       </div>
     </div>
   );
