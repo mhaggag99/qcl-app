@@ -70,6 +70,10 @@ export default function AdminPage() {
 
   const [deleting, setDeleting] = useState(false);
 
+  // Import state
+  const [importResult, setImportResult] = useState<{ ok?: boolean; stats?: Record<string, number>; error?: string } | null>(null);
+  const [importing, setImporting] = useState(false);
+
   const loadUsers = useCallback(async () => {
     const res = await fetch("/api/admin/users");
     if (res.ok) {
@@ -361,6 +365,74 @@ export default function AdminPage() {
               </tbody>
             </table>
           )}
+        </div>
+
+        {/* Import Data */}
+        <div style={{ marginTop: 32 }}>
+          <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.3px", marginBottom: 6 }}>
+            Import Data
+          </div>
+          <div style={{ fontSize: 13, color: C.muted, marginBottom: 16 }}>
+            Upload a <code style={{ background: C.bg3, padding: "1px 6px", borderRadius: 4, fontSize: 12 }}>data-export.json</code> file generated from your local machine to copy all data to this server.
+          </div>
+          <div style={{ background: C.bg2, border: `1px solid ${C.border}`, borderRadius: 12, padding: "24px 24px" }}>
+            <label style={{
+              display: "inline-block", padding: "9px 20px", borderRadius: 8, cursor: "pointer",
+              background: "rgba(75,163,255,0.12)", border: "1px solid rgba(75,163,255,0.25)",
+              color: C.blue, fontSize: 13, fontWeight: 500,
+            }}>
+              {importing ? "Importing…" : "Choose data-export.json"}
+              <input
+                type="file"
+                accept=".json"
+                style={{ display: "none" }}
+                disabled={importing}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setImporting(true);
+                  setImportResult(null);
+                  try {
+                    const text = await file.text();
+                    const json = JSON.parse(text);
+                    const res = await fetch("/api/admin/import", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify(json),
+                    });
+                    const data = await res.json();
+                    setImportResult(data);
+                    if (res.ok) loadUsers();
+                  } catch {
+                    setImportResult({ error: "Failed to read or upload file" });
+                  }
+                  setImporting(false);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            {importResult && (
+              <div style={{
+                marginTop: 16, padding: "12px 16px", borderRadius: 8,
+                background: importResult.ok ? "rgba(56,239,125,0.08)" : "rgba(255,77,106,0.08)",
+                border: `1px solid ${importResult.ok ? "rgba(56,239,125,0.25)" : "rgba(255,77,106,0.25)"}`,
+                color: importResult.ok ? C.green : C.red, fontSize: 13,
+              }}>
+                {importResult.ok ? (
+                  <div>
+                    <div style={{ fontWeight: 600, marginBottom: 6 }}>✓ Import successful</div>
+                    {importResult.stats && Object.entries(importResult.stats).map(([k, v]) => (
+                      <div key={k} style={{ fontSize: 12, color: C.text, opacity: 0.8 }}>
+                        {k}: {v} rows
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div>✗ {importResult.error}</div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </main>
 
