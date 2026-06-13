@@ -334,12 +334,12 @@ export async function GET(req: NextRequest) {
   const session = await getSessionUser(req);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  if (!isConnected(session.userId)) {
+    return NextResponse.json({ error: "google_not_connected" });
+  }
+
   try {
-    if (isConnected(session.userId)) {
-      const data = await fetchFromGoogleAPI(session.userId);
-      return NextResponse.json(data);
-    }
-    const data = await fetchFromICal();
+    const data = await fetchFromGoogleAPI(session.userId);
     return NextResponse.json(data);
   } catch (err) {
     console.error("Calendar error:", err);
