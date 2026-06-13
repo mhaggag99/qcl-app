@@ -434,6 +434,15 @@ export default function Dashboard() {
             </div>
           )}
 
+          <a href="/mobile" title="Open mobile view" style={{
+            width: 32, height: 32, borderRadius: 8,
+            border: `1px solid ${isDark ? "rgba(255,255,255,0.08)" : D.border2}`,
+            background: isDark ? "rgba(255,255,255,0.04)" : D.bg3,
+            color: D.muted, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16,
+            textDecoration: "none",
+          }}>📱</a>
+
           <B primary sm onClick={() => setModal({ type: "add" })}>+ Add client</B>
         </div>
       </div>
