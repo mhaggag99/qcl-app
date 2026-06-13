@@ -15,7 +15,10 @@ import RoundtableTab from "./RoundtableTab";
 import VAsTab from "./VAsTab";
 import MondayActivity from "./MondayActivity";
 import ActivityTab from "./ActivityTab";
+import UserSettingsModal from "./UserSettingsModal";
 import DEMO from "@/lib/demo";
+
+interface SessionUser { id: string; email: string; name: string; role: string; }
 
 type ModalState = { type: string; id?: string } | null;
 
@@ -33,11 +36,13 @@ const TABS = DEMO
 
 export default function Dashboard() {
   const { D, toggle, isDark } = useTheme();
+  const [user, setUser] = useState<SessionUser | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
   const [attendance, setAttendance] = useState<AttendanceEntry[]>([]);
   const [tab, setTab] = useState("overview");
   const [hoveredTab, setHoveredTab] = useState<string | null>(null);
   const [modal, setModal] = useState<ModalState>(null);
+  const [showSettings, setShowSettings] = useState(false);
   const [loading, setLoading] = useState(true);
   const [rtData, setRtData] = useState<{ boardName: string; events: RoundtableEvent[] } | null>(null);
   const [rtLoading, setRtLoading] = useState(false);
@@ -49,6 +54,7 @@ export default function Dashboard() {
   const [mondayAttLoading, setMondayAttLoading] = useState(false);
 
   useEffect(() => {
+    fetch("/api/auth/me").then((r) => r.json()).then((d) => { if (d.user) setUser(d.user); });
     Promise.all([
       fetch("/api/clients").then((r) => r.json()),
       fetch("/api/attendance").then((r) => r.json()),
@@ -57,12 +63,19 @@ export default function Dashboard() {
     loadMondayAtt();
   }, []);
 
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.href = "/login";
+  }
+
   async function loadRoundtable() {
     setRtLoading(true); setRtError("");
     try {
       const res = await fetch("/api/monday/roundtable");
-      if (!res.ok) { setRtError("Could not load roundtable board."); }
-      else { setRtData(await res.json()); }
+      const data = await res.json();
+      if (!res.ok) {
+        setRtError(data.error === "monday_not_configured" ? "Add your Monday API token in Settings to enable this." : "Could not load roundtable board.");
+      } else { setRtData(data); }
     } catch { setRtError("Failed to connect to Monday."); }
     setRtLoading(false);
   }
@@ -80,8 +93,10 @@ export default function Dashboard() {
     setActLoading(true); setActError("");
     try {
       const res = await fetch("/api/monday/activity");
-      if (!res.ok) { setActError("Could not load activity board."); }
-      else { setActData(await res.json()); }
+      const data = await res.json();
+      if (!res.ok) {
+        setActError(data.error === "monday_not_configured" ? "Add your Monday API token in Settings to enable this." : "Could not load activity board.");
+      } else { setActData(data); }
     } catch { setActError("Failed to connect to Monday."); }
     setActLoading(false);
   }
@@ -363,7 +378,7 @@ export default function Dashboard() {
           }}>✦ AI</span>}
         </div>
 
-        {/* Right: LIVE + theme toggle + add client */}
+        {/* Right: LIVE + theme toggle + settings + user + add client */}
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {isDark && (
             <div style={{
@@ -390,6 +405,35 @@ export default function Dashboard() {
             color: D.muted, cursor: "pointer",
             display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14,
           }}>{isDark ? "☀" : "◑"}</button>
+
+          {/* Settings */}
+          <button onClick={() => setShowSettings(true)} title="Settings" className="qcl-btn qcl-ib" style={{
+            width: 32, height: 32, borderRadius: 8,
+            border: `1px solid ${isDark ? "rgba(255,255,255,0.08)" : D.border2}`,
+            background: isDark ? "rgba(255,255,255,0.04)" : D.bg3,
+            color: D.muted, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, opacity: 0.7,
+          }}>⚙</button>
+
+          {/* User display + logout */}
+          {user && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <div style={{
+                padding: "4px 10px", borderRadius: 8,
+                background: isDark ? "rgba(75,163,255,0.08)" : D.bg3,
+                border: `1px solid ${isDark ? "rgba(75,163,255,0.18)" : D.border}`,
+                color: D.text, fontSize: 12, fontWeight: 500,
+                maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              }}>{user.name}</div>
+              <button onClick={logout} title="Sign out" className="qcl-btn qcl-ib" style={{
+                padding: "5px 10px", borderRadius: 7,
+                border: `1px solid ${isDark ? "rgba(255,255,255,0.07)" : D.border}`,
+                background: "transparent",
+                color: D.muted, cursor: "pointer", fontSize: 11, fontWeight: 500,
+              }}>Sign out</button>
+            </div>
+          )}
+
           <B primary sm onClick={() => setModal({ type: "add" })}>+ Add client</B>
         </div>
       </div>
@@ -427,6 +471,8 @@ export default function Dashboard() {
       </div>
 
       {!DEMO && <QuickBar clients={clients} onAction={handleAIAction} setModal={setModal} setTab={setTab} />}
+
+      {showSettings && <UserSettingsModal userName={user?.name || ""} onClose={() => setShowSettings(false)} />}
 
       <Modal open={modal?.type === "add"} onClose={() => setModal(null)} title="Add client">
         <ClientForm onSave={(f) => saveClient(f as unknown as Record<string, unknown>)} onClose={() => setModal(null)} />

@@ -1,16 +1,17 @@
-import { NextResponse } from "next/server";
-import { getSetting, deleteSetting } from "@/lib/db";
+import { NextRequest, NextResponse } from "next/server";
+import { getSessionUser } from "@/lib/auth";
+import { getUserSettings, saveUserSettings } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-export async function POST() {
-  const accessToken = getSetting("google_access_token");
-  if (accessToken) {
-    // Best-effort revoke with Google
-    fetch(`https://oauth2.googleapis.com/revoke?token=${accessToken}`, { method: "POST" }).catch(() => {});
+export async function POST(req: NextRequest) {
+  const session = await getSessionUser(req);
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const settings = getUserSettings(session.userId);
+  if (settings.googleAccessToken) {
+    fetch(`https://oauth2.googleapis.com/revoke?token=${settings.googleAccessToken}`, { method: "POST" }).catch(() => {});
   }
-  deleteSetting("google_access_token");
-  deleteSetting("google_refresh_token");
-  deleteSetting("google_token_expiry");
+  saveUserSettings(session.userId, { googleAccessToken: "", googleRefreshToken: "", googleTokenExpiry: "" });
   return NextResponse.json({ ok: true });
 }

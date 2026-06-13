@@ -1,12 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { postToClientBoard, postToMCL } from "@/lib/monday";
+import { getSessionUser } from "@/lib/auth";
+import { getUserSettings } from "@/lib/db";
 
-export async function GET() {
-  const token = process.env.MONDAY_API_TOKEN || "";
+export async function GET(req: NextRequest) {
+  const session = await getSessionUser(req);
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { mondayApiToken } = getUserSettings(session.userId);
+  if (!mondayApiToken) return NextResponse.json({ error: "monday_not_configured" }, { status: 422 });
+
   const gql = async (q: string) => {
     const r = await fetch("https://api.monday.com/v2", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: token },
+      headers: { "Content-Type": "application/json", Authorization: mondayApiToken },
       body: JSON.stringify({ query: q }),
       cache: "no-store",
     });
@@ -29,14 +36,20 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const session = await getSessionUser(req);
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { mondayApiToken } = getUserSettings(session.userId);
+  if (!mondayApiToken) return NextResponse.json({ error: "monday_not_configured" }, { status: 422 });
+
   try {
     const { clientName, noteText, target } = await req.json();
     if (!clientName || !noteText) {
       return NextResponse.json({ error: "clientName and noteText required" }, { status: 400 });
     }
     const result = target === "mcl"
-      ? await postToMCL(clientName, noteText)
-      : await postToClientBoard(clientName, noteText);
+      ? await postToMCL(clientName, noteText, mondayApiToken)
+      : await postToClientBoard(clientName, noteText, mondayApiToken);
     return NextResponse.json(result);
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });

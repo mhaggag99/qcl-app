@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getValidAccessToken } from "@/lib/googleAuth";
+import { getSessionUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
+  const session = await getSessionUser(request);
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { to, subject, body } = await request.json();
 
-  const token = await getValidAccessToken();
+  const token = await getValidAccessToken(session.userId);
   if (!token) return NextResponse.json({ error: "Not connected" }, { status: 401 });
 
   const raw = [

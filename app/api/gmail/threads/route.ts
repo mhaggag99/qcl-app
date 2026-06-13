@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getValidAccessToken } from "@/lib/googleAuth";
+import { getSessionUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -13,10 +14,13 @@ export interface GmailThread {
 }
 
 export async function GET(request: NextRequest) {
+  const session = await getSessionUser(request);
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const q = request.nextUrl.searchParams.get("q") || "";
   if (!q.trim()) return NextResponse.json({ threads: [] });
 
-  const token = await getValidAccessToken();
+  const token = await getValidAccessToken(session.userId);
   if (!token) return NextResponse.json({ error: "Not connected" }, { status: 401 });
 
   const maxResults = Math.min(parseInt(request.nextUrl.searchParams.get("maxResults") || "8"), 20);

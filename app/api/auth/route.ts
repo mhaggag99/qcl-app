@@ -1,8 +1,16 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { getSessionUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  if (!process.env.GOOGLE_CLIENT_ID) {
+    return NextResponse.json({ error: "google_not_configured" }, { status: 422 });
+  }
+
+  const session = await getSessionUser(request);
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   url.searchParams.set("client_id", process.env.GOOGLE_CLIENT_ID!);
   url.searchParams.set("redirect_uri", process.env.GOOGLE_REDIRECT_URI!);

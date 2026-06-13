@@ -26,6 +26,7 @@ With it you can:
    npm run dev
    ```
 4. Open your browser and go to: **http://localhost:3000**
+5. You will be taken to the **Sign in** page — log in with your email and password.
 
 Leave the Terminal window open while you use the app — closing it will stop the app.
 
@@ -34,6 +35,89 @@ Leave the Terminal window open while you use the app — closing it will stop th
 ## How to Stop the App
 
 Go back to the Terminal window and press **Ctrl + C**.
+
+---
+
+## First-Time Setup (Owner Account)
+
+The very first time you open the app, the database has no users. You need to create the **owner account** — this is your personal account and it also migrates all your existing data (clients, tasks, attendance, etc.) to your profile.
+
+1. Open **http://localhost:3000/api/auth/register** in your browser and send a POST request — or use any HTTP tool.
+   **Or** — a simpler way: the developer (Claude) can run the registration for you with one command.
+
+   The easiest approach: ask in a Claude Code session:
+   ```
+   Register me as owner with email YOU@EMAIL.COM and password YOURPASSWORD
+   ```
+   Claude will hit the register endpoint and confirm when done.
+
+2. Once registered, go to **http://localhost:3000** and log in with your email and password.
+3. All your existing data will appear under your account automatically — nothing is lost.
+
+**Adding a colleague:** Use the Admin Panel (see below) to create new team member accounts. New team members get their own empty workspace — they will not see your clients or data.
+
+---
+
+## Signing In and Out
+
+- Go to **http://localhost:3000** — you'll be redirected to the sign-in page automatically if you're not logged in.
+- Enter your email and password and click **Sign in**.
+- To sign out, click **Sign out** in the top-right corner of the dashboard header.
+- Sessions last 24 hours. After that you'll be asked to sign in again.
+
+---
+
+## Connecting Your Integrations (Settings)
+
+Each team member connects their own Monday.com API token and Google account. Nothing is shared between accounts.
+
+**To open Settings:** click the **⚙** (gear) icon in the top-right corner of the dashboard.
+
+### Monday.com API Token
+
+Required for: Roundtable Status tab, Client Activity tab, Mentions, and posting notes to Monday boards.
+
+1. In Monday.com, go to your **Profile → Admin → API**
+2. Copy your Personal API Token
+3. In the QCL Settings modal, paste it into **Monday.com → API Token** and click **Save Token**
+
+If you haven't added a token, Monday features will show a "Monday not configured" message instead of data.
+
+### Google Account
+
+Required for: Calendar panel and Gmail inbox on the Overview tab.
+
+1. In Settings, scroll to **Google Account**
+2. Click **Connect Google** — you'll be taken to Google's sign-in page
+3. Approve access and you'll be redirected back to the app
+4. The section will now show **✓ Connected**
+
+To disconnect, click **Disconnect** in the same section.
+
+> **Note:** The Connect Google button only appears if the server has Google OAuth credentials configured. If you don't see it, ask your admin to add `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI` to the `.env.local` file.
+
+---
+
+## Admin Panel
+
+The admin panel is a separate interface for managing team member accounts. It is only accessible to the **admin account** (admin@qcl.com).
+
+**URL:** http://localhost:3000/admin
+
+When you log in as admin, you are taken directly to this panel. Regular team members cannot access it.
+
+### What you can do in the Admin Panel
+
+- **View all accounts** — see every team member's name, email, role, whether their Monday API token is configured, and whether their Google account is connected
+- **Add a new team member** — click **+ Add Member**, fill in their name, email, and a temporary password. They can change their password later.
+- **Set Monday API token** — click **Set Token** next to any user to paste their Monday API token directly into their account
+- **Reset a password** — click **Reset PW** to set a new password for any user (useful if they forget theirs)
+- **Delete an account** — click **Delete** to remove a team member. The owner account cannot be deleted.
+
+### Admin account credentials
+
+- Email: `admin@qcl.com`
+- Password: `12345678`
 
 ---
 

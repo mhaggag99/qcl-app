@@ -14,6 +14,7 @@ A Next.js 16 web app for managing lead generation client accounts for Executive 
 | UI | React 19.2.4 |
 | Language | TypeScript 5.x |
 | Database | SQLite via `better-sqlite3` (WAL mode) |
+| Auth | `bcryptjs` (password hashing) + `jose` (JWT in httpOnly cookie) |
 | AI | Anthropic Claude API (`claude-sonnet-4-6`) |
 | Styling | Inline CSS objects (no CSS framework) |
 | Package manager | npm |
@@ -52,14 +53,32 @@ qcl-app/
 │       │   ├── threads/route.ts        # GET inbox threads
 │       │   ├── draft/route.ts          # POST save to Gmail drafts
 │       │   └── send/route.ts           # POST send email
+│       ├── admin/
+│       │   └── users/
+│       │       ├── route.ts            # GET all users+settings, POST create member
+│       │       └── [id]/
+│       │           ├── route.ts        # DELETE user, PATCH reset password
+│       │           └── settings/route.ts # PUT set Monday token for user
 │       ├── auth/
-│       │   ├── google/route.ts         # GET initiate OAuth
-│       │   └── callback/route.ts       # GET handle OAuth callback
+│       │   ├── register/route.ts       # POST create account (first = owner, later = by owner/admin)
+│       │   ├── login/route.ts          # POST login → sets qcl_token cookie; returns role
+│       │   ├── logout/route.ts         # POST clears cookie
+│       │   ├── me/route.ts             # GET current session user
+│       │   ├── route.ts                # GET initiate Google OAuth
+│       │   ├── callback/route.ts       # GET handle Google OAuth callback
+│       │   ├── status/route.ts         # GET google connection status
+│       │   └── revoke/route.ts         # POST disconnect google
+│       ├── user/
+│       │   └── settings/route.ts       # GET status flags, PUT save Monday token
 │       ├── prefs/route.ts              # GET/POST AI memory/preferences
 │       ├── kb/route.ts                 # GET/POST AI knowledge base
 │       └── claude/route.ts             # POST proxy to Anthropic API
+├── middleware.ts                        # Auth guard — redirects /login; admin confined to /admin
 ├── components/
-│   ├── Dashboard.tsx                   # Root: state, tabs, modals
+│   ├── Dashboard.tsx                   # Root: state, tabs, modals, user/logout/settings
+│   ├── UserSettingsModal.tsx           # Settings modal: Monday API token + Google connect
+├── app/admin/
+│   └── page.tsx                        # Admin dashboard (user management, token assignment)
 │   ├── Overview.tsx                    # Tab 1: ERTs, Calendar, Inbox, Tasks, Meeting Draft
 │   ├── Clients.tsx                     # Tab 2: searchable client table (attendees from Monday)
 │   ├── RoundtableTab.tsx               # Tab 3: roundtable status from Monday
@@ -68,6 +87,7 @@ qcl-app/
 │   ├── CalendarPanel.tsx               # Google Calendar events panel
 │   ├── InboxPanel.tsx                  # Gmail inbox panel
 │   ├── TaskPanel.tsx                   # Personal task list panel
+│   ├── MondayNotificationsPanel.tsx    # Monday.com mentions/notifications panel
 │   ├── MeetingDraftPanel.tsx           # Meeting notes & action items panel
 │   ├── Detail.tsx                      # Client detail modal (notes + Monday post buttons)
 │   ├── ClientForm.tsx                  # Create/edit client form
@@ -75,8 +95,10 @@ qcl-app/
 │   ├── QuickBar.tsx                    # AI assistant panel (Claude)
 │   └── ui.tsx                          # Shared primitives
 ├── lib/
-│   ├── db.ts                           # SQLite CRUD (all DB calls)
-│   ├── monday.ts                       # Monday.com API helpers
+│   ├── db.ts                           # SQLite CRUD (all DB calls; all functions take userId)
+│   ├── auth.ts                         # JWT signing/verify, password hash, session cookie helpers
+│   ├── monday.ts                       # Monday.com API helpers (accept token param)
+│   ├── googleAuth.ts                   # Google OAuth helpers (accept userId param)
 │   ├── utils.ts                        # uid, fmt, tsNow, fuzzyMatch, etc.
 │   └── constants.ts                    # VAS[], STATUSES[], DARK{}, LIGHT{}
 ├── types/index.ts                      # TypeScript interfaces
@@ -91,7 +113,43 @@ qcl-app/
 
 Database file: `data/qcl.db` — SQLite with WAL mode.
 
+### Table: `users`
+
+| Column | Type | Notes |
+|---|---|---|
+| id | TEXT PK | `uid()` |
+| email | TEXT UNIQUE | lowercase |
+| password_hash | TEXT | bcrypt |
+| name | TEXT | Display name |
+| role | TEXT | `'owner'`, `'member'`, or `'admin'` |
+| created_at | TEXT | ISO timestamp |
+
+### Table: `user_settings`
+
+| Column | Type | Notes |
+|---|---|---|
+| user_id | TEXT PK | FK to users.id |
+| monday_api_token | TEXT | User's Monday API token |
+| google_access_token | TEXT | Google OAuth access token |
+| google_refresh_token | TEXT | Google OAuth refresh token |
+| google_token_expiry | TEXT | Expiry ms timestamp as string |
+
+### Table: `meeting_draft_v2`
+
+Replaces the old single-row `meeting_draft` table. One row per user.
+
+| Column | Type | Notes |
+|---|---|---|
+| user_id | TEXT PK | FK to users.id |
+| client_id | TEXT | |
+| client_name | TEXT | |
+| notes | TEXT | |
+| action_items | TEXT | JSON: `MeetingActionItem[]` |
+| updated_at | TEXT | |
+
 ### Table: `clients`
+
+**Note: `user_id TEXT` column added** — all reads/writes now filter by `user_id`.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -115,6 +173,8 @@ Database file: `data/qcl.db` — SQLite with WAL mode.
 
 ### Table: `attendance`
 
+**Note: `user_id TEXT` column added.**
+
 | Column | Type | Notes |
 |---|---|---|
 | id | TEXT PK | |
@@ -124,8 +184,11 @@ Database file: `data/qcl.db` — SQLite with WAL mode.
 | absent | INTEGER | 1 = absent |
 | ooz | INTEGER | 1 = out of Zoom |
 | notes | TEXT | |
+| user_id | TEXT | FK to users.id |
 
 ### Table: `tasks`
+
+**Note: `user_id TEXT` column added.**
 
 | Column | Type | Notes |
 |---|---|---|
@@ -135,21 +198,15 @@ Database file: `data/qcl.db` — SQLite with WAL mode.
 | due_date | TEXT | YYYY-MM-DD |
 | priority | TEXT | 'normal' / 'important' / 'urgent' |
 | ts | TEXT | Created timestamp (en-GB) |
+| user_id | TEXT | FK to users.id |
 
-### Table: `meeting_draft`
+### Table: `meeting_draft` (legacy)
 
-Single row (`id = 'current'`). Persists one active meeting draft.
-
-| Column | Type | Notes |
-|---|---|---|
-| id | TEXT PK | Always 'current' |
-| client_id | TEXT | FK to clients.id |
-| client_name | TEXT | Denormalized for display |
-| notes | TEXT | Free-form meeting notes |
-| action_items | TEXT | JSON: `MeetingActionItem[]` |
-| updated_at | TEXT | Last save timestamp |
+Original single-row table, kept for backward compat. New code uses `meeting_draft_v2`.
 
 ### Table: `activity_log`
+
+**Note: `user_id TEXT` column added.**
 
 | Column | Type | Notes |
 |---|---|---|
@@ -158,12 +215,22 @@ Single row (`id = 'current'`). Persists one active meeting draft.
 | va | TEXT | VA name |
 | client_id | TEXT | FK to clients.id |
 | client_name | TEXT | Denormalized |
-| pm_name | TEXT | PM name (for future multi-PM) |
-| conn_req_sent | INTEGER | Connection requests sent |
-| inmails_sent | INTEGER | InMails sent |
-| li_event_invites | INTEGER | LinkedIn event invites |
+| pm_name | TEXT | |
+| conn_req_sent | INTEGER | |
+| inmails_sent | INTEGER | |
+| li_event_invites | INTEGER | |
 | ts | TEXT | Created timestamp |
-| UNIQUE | — | (date, va, client_id) — one submission per VA per client per day |
+| user_id | TEXT | FK to users.id |
+| UNIQUE | — | (date, va, client_id, user_id) — one submission per VA per client per day per user |
+
+### Table: `monday_seen`
+
+**Note: `user_id TEXT` column added.**
+
+| Column | Type | Notes |
+|---|---|---|
+| notification_id | TEXT PK | Monday update ID |
+| user_id | TEXT | FK to users.id |
 
 ### Table: `settings`
 
@@ -247,6 +314,8 @@ interface AttendanceEntry {
 - `POST /api/monday/post` `{ clientName, noteText, target: "client"|"mcl" }` → `{ ok, bubble?, error? }`
 - `GET /api/monday/roundtable` → `{ boardName, events: RoundtableEvent[] }`
 - `GET /api/monday/activity` → `{ boardName, rows: ActivityRow[] }`
+- `GET /api/monday/mentions` → unread Monday notifications where user is mentioned (filtered by local `monday_seen` table)
+- `POST /api/monday/mentions` `{ notificationId, text, addAsTask }` → marks as seen locally; creates a task if `addAsTask: true`
 
 ### Google Calendar
 - `POST /api/calendar/events` `{ title, date, startTime?, endTime?, allDay?, location? }` → `{ ok, eventId? }`
@@ -257,8 +326,18 @@ interface AttendanceEntry {
 - `POST /api/gmail/send` `{ to, subject, body }` → `{ ok }`
 
 ### Auth
-- `GET /api/auth/google` → redirect to Google OAuth
-- `GET /api/auth/callback` → handles OAuth callback, stores tokens
+- `POST /api/auth/register` `{ email, password, name }` → `{ ok, user }` — first registration = owner, later only by owner
+- `POST /api/auth/login` `{ email, password }` → `{ user }` + sets `qcl_token` httpOnly cookie
+- `POST /api/auth/logout` → clears cookie
+- `GET /api/auth/me` → `{ user: { id, email, name, role } }` or 401
+- `GET /api/auth` → redirect to Google OAuth
+- `GET /api/auth/callback` → handles OAuth callback, stores tokens in `user_settings`
+- `GET /api/auth/status` → `{ connected: bool }` Google connection status
+- `POST /api/auth/revoke` → disconnects Google tokens
+
+### User Settings
+- `GET /api/user/settings` → `{ mondayConfigured: bool, googleConnected: bool }`
+- `PUT /api/user/settings` `{ mondayApiToken? }` → `{ ok }`
 
 ### AI
 - `POST /api/claude` `{ payload: MessageRequest }` → raw Anthropic API response
@@ -272,13 +351,22 @@ interface AttendanceEntry {
 ## Components
 
 ### Dashboard (`Dashboard.tsx`)
-Root stateful component. Owns: `clients`, `attendance`, `rtData` (Monday roundtable cache), tab state, modals.
+Root stateful component. Owns: `clients`, `attendance`, `rtData` (Monday roundtable cache), tab state, modals, current user session.
+
+On mount: fetches `GET /api/auth/me` to populate user display name. Header shows user name, a ⚙ Settings button (opens `UserSettingsModal`), and a "Sign out" button.
 
 Roundtable data is fetched once and cached — passed to both `RoundtableTab` and `Clients` to avoid re-fetching on tab switches.
 
+Monday routes returning `{ error: "monday_not_configured" }` surface as friendly "Add your Monday API token in Settings" error messages.
+
+### UserSettingsModal (`UserSettingsModal.tsx`)
+Settings modal accessible via the ⚙ icon in the Dashboard header. Two sections:
+- **Monday.com** — text field to paste/update Monday API token (sends `PUT /api/user/settings`)
+- **Google Account** — shows connection status; "Connect Google" link triggers OAuth, "Disconnect" calls revoke
+
 ### Overview (`Overview.tsx`)
 Two-column layout:
-- **Left**: Upcoming ERTs table + TaskPanel (stacked)
+- **Left**: Upcoming ERTs table + TaskPanel + MondayNotificationsPanel (stacked)
 - **Right**: CalendarPanel | (InboxPanel + MeetingDraftPanel stacked)
 
 ### Clients (`Clients.tsx`)
@@ -292,6 +380,13 @@ Reads from Monday activity tracking board. Collapsible rows per client showing o
 
 ### TaskPanel (`TaskPanel.tsx`)
 Personal task list. Filter: Active / Done. Priority cycling: normal (☆) → important (★) → urgent (!!). Listens for `task-refresh` custom event. Accent: amber.
+
+### MondayNotificationsPanel (`MondayNotificationsPanel.tsx`)
+Standalone panel displayed below TaskPanel in the Overview left column. Fetches Monday.com updates where "marwan haggag" is mentioned (last 100 updates). Seen state is persisted in the `monday_seen` SQLite table — dismissed notifications never reappear. Accent: `#FF3D57` (Monday red).
+- **Add as task** — marks notification seen + creates a task from the text + fires `task-refresh` event
+- **Dismiss** — marks notification seen only, removes from list
+- **Refresh** button — re-fetches from Monday on demand
+- Auto-loads on mount; badge shows unread count.
 
 ### MeetingDraftPanel (`MeetingDraftPanel.tsx`)
 Persisted meeting scratchpad (single active draft). Two sections: free-form notes + action items checklist. Auto-saves to DB 800ms after any change.
@@ -343,14 +438,29 @@ VA chip colors: Claire=red, Rosalie=purple, Aliah=amber, Arvi=blue, Peevee=green
 
 ## Environment Variables (`.env.local` — never commit)
 
-| Variable | Purpose |
+### App-level (set once by server owner, shared across all users)
+
+| Variable | Purpose | Effect if missing |
+|---|---|---|
+| `JWT_SECRET` | Signs session tokens (32+ chars random) | **App broken — auth won't work** |
+| `ANTHROPIC_API_KEY` | Claude AI (QuickBar) | AI panel disabled for all users |
+| `GOOGLE_CLIENT_ID` | Google OAuth app | Google features hidden for all users |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth app | Google features hidden for all users |
+| `GOOGLE_REDIRECT_URI` | Google OAuth callback URL | Google features hidden for all users |
+
+### Per-user (stored in `user_settings` DB table — set via Settings modal)
+
+| Setting | Purpose | Effect if missing |
+|---|---|---|
+| Monday API token | Monday.com GraphQL API | Monday panels show "configure in Settings" |
+| Google access/refresh token | Calendar + Gmail | Calendar/Gmail panels show "Connect Google" |
+
+### Legacy (no longer used — can remove from .env.local)
+
+| Variable | Notes |
 |---|---|
-| `ANTHROPIC_API_KEY` | Claude AI (QuickBar) |
-| `MONDAY_API_TOKEN` | Monday.com GraphQL API |
-| `GOOGLE_CLIENT_ID` | Google OAuth |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth |
-| `GOOGLE_REDIRECT_URI` | Google OAuth callback URL |
-| `GOOGLE_CALENDAR_ICAL_URL` | Calendar iCal feed URL |
+| `MONDAY_API_TOKEN` | Moved to per-user `user_settings` table |
+| `GOOGLE_CALENDAR_ICAL_URL` | Calendar now reads directly from Google API |
 
 ---
 

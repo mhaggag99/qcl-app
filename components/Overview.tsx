@@ -9,6 +9,7 @@ import InboxPanel from "./InboxPanel";
 import CalendarPanel from "./CalendarPanel";
 import TaskPanel from "./TaskPanel";
 import MeetingDraftPanel from "./MeetingDraftPanel";
+import MondayNotificationsPanel from "./MondayNotificationsPanel";
 
 function cleanName(n: string) {
   return n.replace(/\s*\(copy\)\s*/gi, "").replace(/\s*\bcopy\b\s*$/gi, "").trim();
@@ -137,6 +138,9 @@ export default function Overview({ clients, rtData, setModal, onAddNote }: {
 
       {/* Tasks panel — below ERTs */}
       <TaskPanel />
+
+      {/* Monday Notifications panel — below Tasks */}
+      <MondayNotificationsPanel />
 
       </div>{/* end left column */}
 

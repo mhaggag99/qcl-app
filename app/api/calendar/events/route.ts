@@ -1,14 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getValidAccessToken, isConnected } from "@/lib/googleAuth";
+import { getSessionUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
-  if (!isConnected()) {
-    return NextResponse.json({ error: "Not connected to Google Calendar" }, { status: 401 });
+  const session = await getSessionUser(request);
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  if (!process.env.GOOGLE_CLIENT_ID) {
+    return NextResponse.json({ error: "google_not_configured" }, { status: 422 });
+  }
+  if (!isConnected(session.userId)) {
+    return NextResponse.json({ error: "google_not_connected" }, { status: 422 });
   }
 
-  const token = await getValidAccessToken();
+  const token = await getValidAccessToken(session.userId);
   if (!token) {
     return NextResponse.json({ error: "Failed to get access token" }, { status: 401 });
   }
@@ -37,7 +44,6 @@ export async function POST(request: NextRequest) {
       ...(attendeeList.length ? { attendees: attendeeList } : {}),
     };
   } else {
-    // Timed event — times are in "HH:MM" 24h format, Cairo = UTC+3
     const start = `${date}T${startTime || "09:00"}:00+03:00`;
     const end = `${date}T${endTime || startTime || "10:00"}:00+03:00`;
     body = {
@@ -50,7 +56,6 @@ export async function POST(request: NextRequest) {
     };
   }
 
-  // sendUpdates=all → Google sends invitation emails to all attendees
   const res = await fetch(
     `https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all`,
     {

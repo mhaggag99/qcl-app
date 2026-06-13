@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { setSetting } from "@/lib/db";
+import { getSessionUser } from "@/lib/auth";
+import { saveUserSettings } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +10,11 @@ export async function GET(request: NextRequest) {
 
   if (error || !code) {
     return NextResponse.redirect(new URL("/?cal_error=1", request.url));
+  }
+
+  const session = await getSessionUser(request);
+  if (!session) {
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
   try {
@@ -27,9 +33,11 @@ export async function GET(request: NextRequest) {
     if (!res.ok) throw new Error("Token exchange failed");
 
     const data = await res.json();
-    setSetting("google_access_token", data.access_token);
-    setSetting("google_refresh_token", data.refresh_token);
-    setSetting("google_token_expiry", String(Date.now() + (data.expires_in ?? 3600) * 1000));
+    saveUserSettings(session.userId, {
+      googleAccessToken: data.access_token,
+      googleRefreshToken: data.refresh_token,
+      googleTokenExpiry: String(Date.now() + (data.expires_in ?? 3600) * 1000),
+    });
 
     return NextResponse.redirect(new URL("/?cal_connected=1", request.url));
   } catch {

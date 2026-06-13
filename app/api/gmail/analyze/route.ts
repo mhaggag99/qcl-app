@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getValidAccessToken } from "@/lib/googleAuth";
+import { getSessionUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -19,15 +20,12 @@ function extractText(part: GmailPart): string {
     return text;
   }
   if (part.parts) {
-    // Prefer plain text
     for (const p of part.parts) {
       if (p.mimeType === "text/plain") { const t = extractText(p); if (t) return t; }
     }
-    // Fall back to HTML
     for (const p of part.parts) {
       if (p.mimeType === "text/html") { const t = extractText(p); if (t) return t; }
     }
-    // Recurse into multipart
     for (const p of part.parts) {
       const t = extractText(p); if (t) return t;
     }
@@ -35,10 +33,11 @@ function extractText(part: GmailPart): string {
   return "";
 }
 
-// POST { threadIds: string[] }
-// Returns { threads: { subject, messages: { from, date, body }[] }[] }
 export async function POST(req: NextRequest) {
-  const token = await getValidAccessToken();
+  const session = await getSessionUser(req);
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const token = await getValidAccessToken(session.userId);
   if (!token) return NextResponse.json({ error: "Not connected" }, { status: 401 });
 
   const { threadIds } = await req.json() as { threadIds: string[] };
@@ -56,7 +55,7 @@ export async function POST(req: NextRequest) {
       const messages = ((data.messages || []) as { payload: GmailPart; internalDate: string }[]).map((msg) => {
         const headers = (msg.payload as { headers?: { name: string; value: string }[] }).headers || [];
         const get = (name: string) => headers.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value || "";
-        const body = extractText(msg.payload).slice(0, 2500); // cap per message
+        const body = extractText(msg.payload).slice(0, 2500);
         return { from: get("From"), date: get("Date"), body };
       });
 

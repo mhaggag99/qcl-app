@@ -1,16 +1,16 @@
-import { getSetting, setSetting } from "./db";
+import { getUserSettings, saveUserSettings } from "./db";
 
-export function isConnected(): boolean {
-  return !!getSetting("google_refresh_token");
+export function isConnected(userId: string): boolean {
+  return !!getUserSettings(userId).googleRefreshToken;
 }
 
-export async function getValidAccessToken(): Promise<string | null> {
-  const accessToken = getSetting("google_access_token");
-  const refreshToken = getSetting("google_refresh_token");
-  if (!refreshToken) return null;
+export async function getValidAccessToken(userId: string): Promise<string | null> {
+  const settings = getUserSettings(userId);
+  const { googleAccessToken, googleRefreshToken, googleTokenExpiry } = settings;
+  if (!googleRefreshToken) return null;
 
-  const expiry = parseInt(getSetting("google_token_expiry") ?? "0");
-  if (accessToken && Date.now() < expiry - 60000) return accessToken;
+  const expiry = parseInt(googleTokenExpiry || "0");
+  if (googleAccessToken && Date.now() < expiry - 60000) return googleAccessToken;
 
   // Refresh
   try {
@@ -20,14 +20,16 @@ export async function getValidAccessToken(): Promise<string | null> {
       body: new URLSearchParams({
         client_id: process.env.GOOGLE_CLIENT_ID!,
         client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-        refresh_token: refreshToken,
+        refresh_token: googleRefreshToken,
         grant_type: "refresh_token",
       }),
     });
     if (!res.ok) return null;
     const data = await res.json();
-    setSetting("google_access_token", data.access_token);
-    setSetting("google_token_expiry", String(Date.now() + (data.expires_in ?? 3600) * 1000));
+    saveUserSettings(userId, {
+      googleAccessToken: data.access_token,
+      googleTokenExpiry: String(Date.now() + (data.expires_in ?? 3600) * 1000),
+    });
     return data.access_token as string;
   } catch {
     return null;

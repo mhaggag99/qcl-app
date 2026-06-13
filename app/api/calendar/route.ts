@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { isConnected, getValidAccessToken } from "@/lib/googleAuth";
+import { getSessionUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -211,8 +212,8 @@ function gCalEventToCalEvent(item: Record<string, unknown>): CalEvent {
   };
 }
 
-async function fetchFromGoogleAPI(): Promise<{ today: CalEvent[]; tomorrow: CalEvent[] }> {
-  const token = await getValidAccessToken();
+async function fetchFromGoogleAPI(userId: string): Promise<{ today: CalEvent[]; tomorrow: CalEvent[] }> {
+  const token = await getValidAccessToken(userId);
   if (!token) throw new Error("No valid token");
 
   const now = new Date();
@@ -329,10 +330,13 @@ async function fetchFromICal(): Promise<{ today: CalEvent[]; tomorrow: CalEvent[
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const session = await getSessionUser(req);
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   try {
-    if (isConnected()) {
-      const data = await fetchFromGoogleAPI();
+    if (isConnected(session.userId)) {
+      const data = await fetchFromGoogleAPI(session.userId);
       return NextResponse.json(data);
     }
     const data = await fetchFromICal();

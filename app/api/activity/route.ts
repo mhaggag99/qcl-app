@@ -1,15 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as db from "@/lib/db";
+import { getSessionUser } from "@/lib/auth";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const session = await getSessionUser(req);
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    return NextResponse.json(db.getAllActivityLogs());
+    return NextResponse.json(db.getActivityLogs(session.userId));
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }
 
 export async function POST(req: NextRequest) {
+  const session = await getSessionUser(req);
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const data = await req.json();
     const result = db.createActivityLog({
@@ -23,7 +28,7 @@ export async function POST(req: NextRequest) {
       liEventInvites: parseInt(data.liEventInvites) || 0,
       interested: parseInt(data.interested) || 0,
       registeredErt: parseInt(data.registeredErt) || 0,
-    });
+    }, session.userId);
     if ("duplicate" in result) {
       return NextResponse.json({ error: "Already submitted for this client today." }, { status: 409 });
     }

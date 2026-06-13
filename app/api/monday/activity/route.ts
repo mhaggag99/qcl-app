@@ -1,11 +1,19 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getMonthlyActivity } from "@/lib/monday";
+import { getSessionUser } from "@/lib/auth";
+import { getUserSettings } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const session = await getSessionUser(req);
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { mondayApiToken } = getUserSettings(session.userId);
+  if (!mondayApiToken) return NextResponse.json({ error: "monday_not_configured" }, { status: 422 });
+
   try {
-    const data = await getMonthlyActivity();
+    const data = await getMonthlyActivity(mondayApiToken);
     if (!data) return NextResponse.json({ error: "Activity board not found for this month" }, { status: 404 });
     return NextResponse.json(data);
   } catch (e) {

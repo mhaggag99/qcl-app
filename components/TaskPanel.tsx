@@ -165,7 +165,6 @@ export default function TaskPanel() {
               onChange={() => toggleDone(t.id, t.done)}
               style={{ cursor: "pointer", accentColor: accent, flexShrink: 0, width: 14, height: 14 }}
             />
-            {/* Priority toggle */}
             <button
               onClick={() => cyclePriority(t.id, t.priority)}
               title={t.priority === "normal" ? "Mark important" : t.priority === "important" ? "Mark urgent" : "Clear priority"}
@@ -175,8 +174,8 @@ export default function TaskPanel() {
                 opacity: t.done ? 0.3 : 1,
               }}
             >
-              {t.priority === "urgent"   && <span style={{ color: D.red    }}>!!</span>}
-              {t.priority === "important" && <span style={{ color: D.amber  }}>★</span>}
+              {t.priority === "urgent"    && <span style={{ color: D.red   }}>!!</span>}
+              {t.priority === "important" && <span style={{ color: D.amber }}>★</span>}
               {t.priority === "normal"    && <span style={{ color: D.border, fontSize: 10 }}>☆</span>}
             </button>
             <span style={{
