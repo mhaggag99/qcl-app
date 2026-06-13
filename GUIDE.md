@@ -121,6 +121,30 @@ When you log in as admin, you are taken directly to this panel. Regular team mem
 
 ---
 
+## Mobile View
+
+The app has a mobile-optimized view you can use on your phone — no separate app needed.
+
+**To open it:** On the dashboard header, tap the **📱** button. Or go directly to `/mobile` on the hosted URL.
+
+### What the mobile view includes
+
+All 7 sections accessible from a bottom navigation bar:
+
+| Tab | What it shows |
+|---|---|
+| **Home** | Stats summary, upcoming ERTs (next 30 days), quick task list |
+| **Clients** | Searchable client list with status filter, tap any client to add notes |
+| **Tasks** | Full task list — add, complete, view done tasks |
+| **Meeting** | Meeting draft — pick a client, write notes, add action items, push to tasks |
+| **ERT** | Roundtable data from Monday (same as desktop Roundtable tab) |
+| **VAs** | VA attendance stats by month, log new attendance entries |
+| **Activity** | VA activity log (connection requests, InMails, event invites) |
+
+The mobile view supports iOS safe areas (notch + home indicator) and has large touch targets throughout. Use the **Desktop** link in the top header to switch back to the full desktop view.
+
+---
+
 ## The Five Tabs
 
 ### Overview

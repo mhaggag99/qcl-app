@@ -77,8 +77,9 @@ qcl-app/
 ├── components/
 │   ├── Dashboard.tsx                   # Root: state, tabs, modals, user/logout/settings
 │   ├── UserSettingsModal.tsx           # Settings modal: Monday API token + Google connect
-├── app/admin/
-│   └── page.tsx                        # Admin dashboard (user management, token assignment)
+├── app/
+│   ├── admin/page.tsx                  # Admin dashboard (user management, token assignment)
+│   └── mobile/page.tsx                 # Mobile-optimized view — all tabs in one page, bottom nav
 │   ├── Overview.tsx                    # Tab 1: ERTs, Calendar, Inbox, Tasks, Meeting Draft
 │   ├── Clients.tsx                     # Tab 2: searchable client table (attendees from Monday)
 │   ├── RoundtableTab.tsx               # Tab 3: roundtable status from Monday
