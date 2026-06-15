@@ -55,10 +55,11 @@ qcl-app/
 │       │   └── send/route.ts           # POST send email
 │       ├── admin/
 │       │   └── users/
-│       │       ├── route.ts            # GET all users+settings, POST create member
+│       │       ├── route.ts            # GET all users+settings+clientCount, POST create member
 │       │       └── [id]/
-│       │           ├── route.ts        # DELETE user, PATCH reset password
+│       │           ├── route.ts        # DELETE user, PATCH password or role
 │       │           └── settings/route.ts # PUT set Monday token for user
+│       │   └── monday-import/route.ts  # POST import clients+VAs from Monday RT+MCL boards
 │       ├── auth/
 │       │   ├── register/route.ts       # POST create account (first = owner, later = by owner/admin)
 │       │   ├── login/route.ts          # POST login → sets qcl_token cookie; returns role
@@ -78,7 +79,7 @@ qcl-app/
 │   ├── Dashboard.tsx                   # Root: state, tabs, modals, user/logout/settings
 │   ├── UserSettingsModal.tsx           # Settings modal: Monday API token + Google connect
 ├── app/
-│   ├── admin/page.tsx                  # Admin dashboard (user management, token assignment)
+│   ├── admin/page.tsx                  # Admin dashboard: stats bar, user table with client counts, Import from Monday modal, role management
 │   └── mobile/page.tsx                 # Mobile-optimized view — all tabs in one page, bottom nav
 │   ├── Overview.tsx                    # Tab 1: ERTs, Calendar, Inbox, Tasks, Meeting Draft
 │   ├── Clients.tsx                     # Tab 2: searchable client table (attendees from Monday)
@@ -531,6 +532,9 @@ VA chip colors: Claire=red, Rosalie=purple, Aliah=amber, Arvi=blue, Peevee=green
 - **Custom DOM events** (`task-refresh`, `cal-refresh`) used for cross-component refresh without prop drilling.
 - **Monday.com pagination** — per-group cursor pagination used to bypass 500-item board-level cap.
 - **Exact board name matching** for MCL — uses `b.name.toLowerCase() === "master client list"` (not fuzzy) to avoid matching similar board names.
+- **`countClientsByUser()`** in `db.ts` — returns `Record<userId, count>` via a single `GROUP BY` query, used by admin users API to show client count per PM.
+- **`updateUserRole()`** in `db.ts` — updates user role; PATCH `/api/admin/users/[id]` accepts `{ role }` or `{ password }` independently.
+- **`/api/admin/monday-import`** — POST with `{ userId, pmName, vaNames? }` pulls RT board (658228616) + MCL board (1961415089), creates/updates clients, saves VA names, marks setup done. Requires at least one user with a Monday token set.
 - **`next.config.ts`** must keep `serverExternalPackages: ["better-sqlite3"]`.
 
 ---

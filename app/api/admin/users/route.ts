@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser, hashPassword } from "@/lib/auth";
-import { getAllUsers, createUser, getUserSettings, isSetupDone } from "@/lib/db";
+import { getAllUsers, createUser, getUserSettings, isSetupDone, countClientsByUser } from "@/lib/db";
 
 function requireAdmin(session: Awaited<ReturnType<typeof getSessionUser>>) {
   if (!session || session.role !== "admin") {
@@ -15,6 +15,7 @@ export async function GET(request: NextRequest) {
   if (denied) return denied;
 
   const users = getAllUsers();
+  const clientCounts = countClientsByUser();
   const result = users.map((u) => {
     const settings = getUserSettings(u.id);
     return {
@@ -26,6 +27,7 @@ export async function GET(request: NextRequest) {
       googleConnected: !!settings.googleAccessToken,
       setupDone: isSetupDone(u.id),
       createdAt: u.createdAt,
+      clientCount: clientCounts[u.id] ?? 0,
     };
   });
 

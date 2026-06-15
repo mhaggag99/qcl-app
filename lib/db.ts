@@ -228,12 +228,23 @@ export function getAllUsers(): User[] {
   return (rows as Record<string, unknown>[]).map(rowToUser);
 }
 
+export function countClientsByUser(): Record<string, number> {
+  const rows = getDb().prepare("SELECT user_id, COUNT(*) as n FROM clients GROUP BY user_id").all() as { user_id: string; n: number }[];
+  const map: Record<string, number> = {};
+  for (const r of rows) map[r.user_id] = r.n;
+  return map;
+}
+
 export function deleteUser(id: string): void {
   getDb().prepare("DELETE FROM users WHERE id = ?").run(id);
 }
 
 export function updateUserPassword(id: string, passwordHash: string): void {
   getDb().prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(passwordHash, id);
+}
+
+export function updateUserRole(id: string, role: UserRole): void {
+  getDb().prepare("UPDATE users SET role = ? WHERE id = ?").run(role, id);
 }
 
 export function isSetupDone(userId: string): boolean {

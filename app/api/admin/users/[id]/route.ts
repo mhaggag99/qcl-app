@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser, hashPassword } from "@/lib/auth";
-import { deleteUser, getUserById, updateUserPassword } from "@/lib/db";
+import { deleteUser, getUserById, updateUserPassword, updateUserRole } from "@/lib/db";
 
 function requireAdmin(session: Awaited<ReturnType<typeof getSessionUser>>) {
   if (!session || session.role !== "admin") {
@@ -31,13 +31,25 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
   const { id } = await params;
   const body = await request.json().catch(() => null);
-  if (!body?.password) return NextResponse.json({ error: "password is required" }, { status: 400 });
+  if (!body) return NextResponse.json({ error: "Body required" }, { status: 400 });
 
   const target = getUserById(id);
   if (!target) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
-  const newHash = await hashPassword(body.password);
-  updateUserPassword(id, newHash);
+  if (body.password) {
+    const newHash = await hashPassword(body.password);
+    updateUserPassword(id, newHash);
+  }
+
+  if (body.role) {
+    if (!["admin", "member", "owner"].includes(body.role)) {
+      return NextResponse.json({ error: "Invalid role" }, { status: 400 });
+    }
+    if (target.role === "owner") {
+      return NextResponse.json({ error: "Cannot change owner role" }, { status: 400 });
+    }
+    updateUserRole(id, body.role);
+  }
 
   return NextResponse.json({ ok: true });
 }
