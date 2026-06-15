@@ -15,6 +15,7 @@ export interface SessionPayload {
   userId: string;
   email: string;
   role: "owner" | "member" | "admin";
+  setupDone?: boolean;
 }
 
 export async function hashPassword(plain: string): Promise<string> {

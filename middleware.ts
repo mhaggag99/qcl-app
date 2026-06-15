@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 
 const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/auth/register", "/api/auth/logout"];
+const SETUP_PATHS  = ["/setup", "/api/setup", "/api/auth/me", "/api/auth/logout"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -40,6 +41,16 @@ export async function middleware(request: NextRequest) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     return NextResponse.redirect(new URL("/", request.url));
+  }
+
+  // Members/owners who haven't completed setup → redirect to /setup (except setup routes themselves)
+  // Use strict === false so old JWTs (where setupDone is undefined) are not affected
+  const onSetupPath = SETUP_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
+  if (session.setupDone === false && !onSetupPath) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Workspace setup required" }, { status: 403 });
+    }
+    return NextResponse.redirect(new URL("/setup", request.url));
   }
 
   return NextResponse.next();

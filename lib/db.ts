@@ -140,6 +140,12 @@ function initSchema(db: Database.Database): void {
   try { db.exec("ALTER TABLE attendance ADD COLUMN user_id TEXT NOT NULL DEFAULT ''"); } catch {}
   try { db.exec("ALTER TABLE activity_log ADD COLUMN user_id TEXT NOT NULL DEFAULT ''"); } catch {}
   try { db.exec("ALTER TABLE monday_seen ADD COLUMN user_id TEXT NOT NULL DEFAULT ''"); } catch {}
+  // Onboarding: track whether each PM has completed workspace setup
+  try { db.exec("ALTER TABLE users ADD COLUMN setup_done INTEGER DEFAULT 0"); } catch {}
+  // Per-user VA names (stored as JSON array)
+  try { db.exec("ALTER TABLE user_settings ADD COLUMN va_names TEXT DEFAULT '[]'"); } catch {}
+  // Auto-mark anyone who already has clients as setup complete
+  db.exec("UPDATE users SET setup_done = 1 WHERE setup_done = 0 AND id IN (SELECT DISTINCT user_id FROM clients WHERE user_id != '')");
 
   // One-time seed: May 2026 attendance (Arvi & Rob excluded — they left)
   const seeded = db.prepare("SELECT value FROM settings WHERE key = ?").get("seeded_may_2026_att");
@@ -230,6 +236,30 @@ export function updateUserPassword(id: string, passwordHash: string): void {
   getDb().prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(passwordHash, id);
 }
 
+export function isSetupDone(userId: string): boolean {
+  const row = getDb().prepare("SELECT setup_done FROM users WHERE id = ?").get(userId) as { setup_done: number } | undefined;
+  return row ? row.setup_done === 1 : false;
+}
+
+export function markSetupDone(userId: string): void {
+  getDb().prepare("UPDATE users SET setup_done = 1 WHERE id = ?").run(userId);
+}
+
+export function getUserVAs(userId: string): string[] {
+  const row = getDb().prepare("SELECT va_names FROM user_settings WHERE user_id = ?").get(userId) as { va_names: string } | undefined;
+  try { return JSON.parse(row?.va_names || "[]"); } catch { return []; }
+}
+
+export function saveUserVAs(userId: string, vas: string[]): void {
+  const db = getDb();
+  const existing = db.prepare("SELECT user_id FROM user_settings WHERE user_id = ?").get(userId);
+  if (existing) {
+    db.prepare("UPDATE user_settings SET va_names = ? WHERE user_id = ?").run(JSON.stringify(vas), userId);
+  } else {
+    db.prepare("INSERT INTO user_settings (user_id, va_names) VALUES (?, ?)").run(userId, JSON.stringify(vas));
+  }
+}
+
 // ─── User Settings ────────────────────────────────────────────────────────────
 
 function rowToUserSettings(row: Record<string, unknown>): UserSettings {
@@ -315,13 +345,46 @@ function rowToClient(row: Record<string, unknown>): Client {
 
 export function getClients(userId: string): Client[] {
   const db = getDb();
-  // Auto-correct: Performing clients with < 15 attendees are Slow Generating.
-  // At Risk and Stopped are intentional manual overrides — never touch them.
-  db.prepare(
-    "UPDATE clients SET status = 'Slow Generating' WHERE attendees < 15 AND status = 'Performing' AND user_id = ?"
-  ).run(userId);
   const rows = db.prepare("SELECT * FROM clients WHERE user_id = ? ORDER BY sort_order ASC, rowid ASC").all(userId);
-  return (rows as Record<string, unknown>[]).map(rowToClient);
+  const clients = (rows as Record<string, unknown>[]).map(rowToClient);
+
+  // Auto-calculate status: promise is 20 confirmed attendees in 90 days.
+  // Stopped = manual override, never touched.
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const updateStatus = db.prepare("UPDATE clients SET status = ? WHERE id = ? AND user_id = ?");
+
+  for (const c of clients) {
+    if (c.status === "Stopped") continue;
+
+    let newStatus: string;
+    if (!c.start) {
+      newStatus = "New Client";
+    } else {
+      const startDate = new Date(c.start);
+      startDate.setHours(0, 0, 0, 0);
+      const daysElapsed = Math.max(0, Math.round((today.getTime() - startDate.getTime()) / 86_400_000));
+
+      if (daysElapsed < 14) {
+        newStatus = "New Client";
+      } else if (c.attendees >= 20) {
+        newStatus = "Performing";
+      } else {
+        const expectedByNow = Math.min(20, (daysElapsed / 90) * 20);
+        const pace = expectedByNow > 0 ? c.attendees / expectedByNow : 1;
+        if (pace >= 0.70) newStatus = "Performing";
+        else if (pace >= 0.40) newStatus = "Slow Generating";
+        else newStatus = "At Risk";
+      }
+    }
+
+    if (newStatus !== c.status) {
+      updateStatus.run(newStatus, c.id, userId);
+      c.status = newStatus;
+    }
+  }
+
+  return clients;
 }
 
 export function createClient(data: Omit<Client, "id"> & { note?: string }, userId: string): Client {

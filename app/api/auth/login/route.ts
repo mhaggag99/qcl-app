@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyPassword, signToken, makeSessionCookie } from "@/lib/auth";
-import { getUserByEmail } from "@/lib/db";
+import { getUserByEmail, isSetupDone } from "@/lib/db";
 
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
@@ -18,8 +18,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
   }
 
-  const token = await signToken({ userId: user.id, email: user.email, role: user.role });
-  const response = NextResponse.json({ user: { id: user.id, email: user.email, name: user.name, role: user.role } });
+  const setupDone = isSetupDone(user.id);
+  const token = await signToken({ userId: user.id, email: user.email, role: user.role, setupDone });
+  const response = NextResponse.json({ user: { id: user.id, email: user.email, name: user.name, role: user.role, setupDone } });
   response.headers.set("Set-Cookie", makeSessionCookie(token));
   return response;
 }

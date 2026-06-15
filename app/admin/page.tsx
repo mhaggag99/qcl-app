@@ -10,6 +10,7 @@ interface AdminUser {
   role: "owner" | "member" | "admin";
   mondayConfigured: boolean;
   googleConnected: boolean;
+  setupDone: boolean;
   createdAt: string;
 }
 
@@ -296,6 +297,7 @@ export default function AdminPage() {
                   <th style={s.th}>Member</th>
                   <th style={s.th}>Email</th>
                   <th style={s.th}>Role</th>
+                  <th style={s.th}>Setup</th>
                   <th style={s.th}>Monday</th>
                   <th style={s.th}>Google</th>
                   <th style={s.th}>Joined</th>
@@ -327,6 +329,19 @@ export default function AdminPage() {
                         color: roleColors[u.role] || C.muted,
                         textTransform: "capitalize",
                       }}>{u.role}</span>
+                    </td>
+                    <td style={s.td}>
+                      {u.role === "admin" ? (
+                        <span style={{ color: C.muted, fontSize: 12 }}>—</span>
+                      ) : u.setupDone ? (
+                        <span style={{ color: C.green, fontSize: 12, fontWeight: 600 }}>✓ Done</span>
+                      ) : (
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, color: C.amber,
+                          background: "rgba(255,171,26,0.10)", border: "1px solid rgba(255,171,26,0.25)",
+                          borderRadius: 20, padding: "2px 8px",
+                        }}>⏳ Pending</span>
+                      )}
                     </td>
                     <td style={s.td}>
                       <span style={{ color: u.mondayConfigured ? C.green : C.muted, fontSize: 12 }}>

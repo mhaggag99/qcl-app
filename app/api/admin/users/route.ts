@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser, hashPassword } from "@/lib/auth";
-import { getAllUsers, createUser, getUserSettings } from "@/lib/db";
+import { getAllUsers, createUser, getUserSettings, isSetupDone } from "@/lib/db";
 
 function requireAdmin(session: Awaited<ReturnType<typeof getSessionUser>>) {
   if (!session || session.role !== "admin") {
@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
       role: u.role,
       mondayConfigured: !!settings.mondayApiToken,
       googleConnected: !!settings.googleAccessToken,
+      setupDone: isSetupDone(u.id),
       createdAt: u.createdAt,
     };
   });

@@ -39,7 +39,9 @@ export default function Detail({ c, onClose, onEdit, onNote, onToggleNote, onDel
   const [mondayStatus, setMondayStatus] = useState<{ ok: boolean; bubble: string } | null>(null);
   const [notePosting, setNotePosting] = useState<Record<string, "client" | "mcl">>({});
   const [noteResults, setNoteResults] = useState<Record<string, { target: string; ok: boolean; bubble: string; error?: string }>>({});
-  const d = daysTo(c.ert);
+  const today = new Date().toISOString().slice(0, 10);
+  const ertIsFuture = !!(c.ert && c.ert > today);
+  const d = ertIsFuture ? daysTo(c.ert) : null;
   const dc = d === null ? D.muted : d <= 7 ? D.red : d <= 14 ? D.amber : D.green;
 
   const allNotes = c.notes || [];
@@ -119,8 +121,9 @@ export default function Detail({ c, onClose, onEdit, onNote, onToggleNote, onDel
       </div>
 
       <DS D={D} title="ERT & progress">
-        <KV D={D} k="Next ERT" v={fmt(c.ert) + (c.ertTime ? " " + c.ertTime : "")} />
-        <KV D={D} k="Days to ERT" v={<span style={{ color: dc, fontWeight: 600 }}>{d !== null ? d + " days" : "—"}</span>} />
+        {ertIsFuture && <KV D={D} k="Next ERT" v={fmt(c.ert) + (c.ertTime ? " " + c.ertTime : "")} />}
+        {ertIsFuture && <KV D={D} k="Days to ERT" v={<span style={{ color: dc, fontWeight: 600 }}>{d !== null ? d + " days" : "—"}</span>} />}
+        {!ertIsFuture && c.ert && <KV D={D} k="Last ERT" v={fmt(c.ert)} />}
         <KV D={D} k="Attendees confirmed" v={<Prog val={c.attendees || 0} />} />
         <KV D={D} k="Registered" v={c.registered || 0} />
         <KV D={D} k="Start date" v={c.start || "—"} />

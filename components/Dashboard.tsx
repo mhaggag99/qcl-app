@@ -53,13 +53,20 @@ export default function Dashboard() {
   const [actError, setActError] = useState("");
   const [mondayAtt, setMondayAtt] = useState<VAAttendanceEntry[]>([]);
   const [mondayAttLoading, setMondayAttLoading] = useState(false);
+  const [userVAs, setUserVAs] = useState<string[]>([]);
 
   useEffect(() => {
     fetch("/api/auth/me").then((r) => r.json()).then((d) => { if (d.user) setUser(d.user); });
     Promise.all([
       fetch("/api/clients").then((r) => r.json()),
       fetch("/api/attendance").then((r) => r.json()),
-    ]).then(([c, a]) => { setClients(c); setAttendance(a); setLoading(false); });
+      fetch("/api/user/vas").then((r) => r.json()),
+    ]).then(([c, a, v]) => {
+      setClients(c);
+      setAttendance(a);
+      if (Array.isArray(v?.vas) && v.vas.length > 0) setUserVAs(v.vas);
+      setLoading(false);
+    });
     loadRoundtable();
     loadMondayAtt();
   }, []);
@@ -420,7 +427,7 @@ export default function Dashboard() {
         {tab === "overview" && <Overview clients={clients} rtData={rtData} setModal={setModal as (m: { type: string; id: string }) => void} onAddNote={addNote} />}
         {tab === "clients" && <Clients clients={clients} setModal={setModal as (m: { type: string; id: string }) => void} onDelete={deleteClient} onStatusChange={changeStatus} rtData={rtData} onRefreshRt={loadRoundtable} rtLoading={rtLoading} />}
         {tab === "roundtable" && <RoundtableTab clients={clients} data={rtData} loading={rtLoading} error={rtError} onLoad={loadRoundtable} />}
-        {tab === "vas" && <VAsTab clients={clients} attendance={attendance} mondayAtt={mondayAtt} mondayAttLoading={mondayAttLoading} onRefreshMondayAtt={loadMondayAtt} setModal={setModal as (m: { type: string }) => void} onDelAtt={delAtt} />}
+        {tab === "vas" && <VAsTab clients={clients} attendance={attendance} mondayAtt={mondayAtt} mondayAttLoading={mondayAttLoading} onRefreshMondayAtt={loadMondayAtt} setModal={setModal as (m: { type: string }) => void} onDelAtt={delAtt} userVAs={userVAs.length > 0 ? userVAs : undefined} />}
         {tab === "activity" && (DEMO
           ? <ActivityTab />
           : <MondayActivity clients={clients} data={actData} loading={actLoading} error={actError} onLoad={loadActivity} />

@@ -287,7 +287,7 @@ interface AttendanceEntry {
 ## API Routes
 
 ### Clients
-- `GET /api/clients` → `Client[]` — **auto-updates status before returning**: any client with `attendees < 15` whose status is `"Performing"` is silently updated to `"Slow Generating"` in the DB. `"At Risk"` and `"Stopped"` are never auto-changed.
+- `GET /api/clients` → `Client[]` — **auto-calculates campaign status on every fetch** based on the 20-attendees-in-90-days promise. Logic (applied per client, skipping `"Stopped"`): no start date → `"New Client"`; < 14 days since start → `"New Client"`; ≥ 20 attendees → `"Performing"`; else pace = `attendees / min(20, daysElapsed/90*20)` — pace ≥ 70% → `"Performing"`, ≥ 40% → `"Slow Generating"`, < 40% → `"At Risk"`. Status is written back to DB when it changes.
 - `POST /api/clients` `{ ...fields, note? }` → `Client`
 - `PUT /api/clients/[id]` `{ ...Partial<Client>, notesToAppend?, notesReplace? }` → `Client`
 - `DELETE /api/clients/[id]` → `{ ok: true }`
@@ -371,7 +371,7 @@ Two-column layout:
 - **Right**: CalendarPanel | (InboxPanel + MeetingDraftPanel stacked)
 
 ### Clients (`Clients.tsx`)
-Searchable/filterable table. Attendees column is computed live from Monday roundtable data (`rtData` prop) — falls back to stored value if Monday hasn't loaded.
+Searchable/filterable table. NEXT ERT, LAST ERT, and Attendees are sourced from Monday roundtable data (`rtData`). When Monday is not configured or `rtLoading` is true, columns fall back to the stored DB values: `c.ert` (shown as Next ERT if future, Last ERT if past) and `c.attendees`. This ensures PMs without a Monday token still see their data.
 
 ### RoundtableTab (`RoundtableTab.tsx`)
 Reads from Monday roundtable board. Groups events per client. Accepts `data/loading/error/onLoad` props from Dashboard (no internal fetch — data is shared/cached at Dashboard level).

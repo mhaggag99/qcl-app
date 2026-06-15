@@ -245,17 +245,22 @@ export default function Clients({ clients, setModal, onDelete, onStatusChange, r
                 )}
                 {list.map((c) => {
                   const vaColor = palette[VA_COLORS[c.va] || "muted"] || D.muted;
-                  const att = rtAttendees.has(c.name) ? rtAttendees.get(c.name)! : (rtData == null ? null : (c.attendees || 0));
+                  const att = rtAttendees.has(c.name) ? rtAttendees.get(c.name)! : (rtLoading ? null : (c.attendees || 0));
                   const attNum = att ?? 0;
                   const attColor = attNum === 0 ? D.hint : attNum < 8 ? D.amber : D.text;
-                  const nextErtEntry = rtNextErt.get(c.name);
+                  const today = new Date().toISOString().slice(0, 10);
+                  const storedErt = c.ert || "";
+                  const storedErtIsFuture = storedErt > today;
+                  const nextErtEntry = rtNextErt.get(c.name) || (!rtLoading && storedErt && storedErtIsFuture
+                    ? { date: storedErt, time: c.ertTime || "", registered: c.registered ?? null }
+                    : undefined);
                   const nextErtDate = nextErtEntry?.date || null;
                   const nextErtTime = nextErtEntry?.time || null;
                   const nextErtReg = nextErtEntry?.registered ?? null;
                   const d = daysTo(nextErtDate || "");
                   const dColor = d === null ? D.hint : d <= 7 ? D.red : d <= 14 ? D.amber : D.green;
                   const dLabel = d === null ? "—" : d === 0 ? "Today" : `${d}d`;
-                  const lastErtDate = rtLastErt.get(c.name) || null;
+                  const lastErtDate = rtLastErt.get(c.name) || (!rtLoading && storedErt && !storedErtIsFuture ? storedErt : null);
 
                   return (
                     <tr

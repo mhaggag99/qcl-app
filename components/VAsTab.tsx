@@ -18,7 +18,7 @@ function mondayToEntry(m: VAAttendanceEntry): AttendanceEntry {
   };
 }
 
-export default function VAsTab({ clients, attendance, mondayAtt, mondayAttLoading, onRefreshMondayAtt, setModal, onDelAtt }: {
+export default function VAsTab({ clients, attendance, mondayAtt, mondayAttLoading, onRefreshMondayAtt, setModal, onDelAtt, userVAs }: {
   clients: Client[];
   attendance: AttendanceEntry[];
   mondayAtt: VAAttendanceEntry[];
@@ -26,6 +26,7 @@ export default function VAsTab({ clients, attendance, mondayAtt, mondayAttLoadin
   onRefreshMondayAtt: () => void;
   setModal: (m: { type: string }) => void;
   onDelAtt: (id: string) => void;
+  userVAs?: string[];
 }) {
   const { D } = useTheme();
   const [filterVa, setFilterVa] = useState<string>("All");
@@ -38,9 +39,11 @@ export default function VAsTab({ clients, attendance, mondayAtt, mondayAttLoadin
   const m2 = new Date(viewYear, viewMonth + 1, 0).toISOString().slice(0, 10);
   const monthLabel = new Date(viewYear, viewMonth, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
 
+  // Use per-user VAs if provided, otherwise fall back to global constants
+  const activeVAs = userVAs ?? VAS;
   // Merge local (OOZ-focused) + Monday (late/absent) entries, deduplicate by id
   // Only include local entries for our VAs (filter out other teams' entries)
-  const vasSet = new Set<string>(VAS);
+  const vasSet = new Set<string>(activeVAs);
   const mondayEntries = useMemo(() => mondayAtt.map(mondayToEntry), [mondayAtt]);
   const allAttendance = useMemo(() => {
     const seen = new Set<string>();
@@ -50,7 +53,7 @@ export default function VAsTab({ clients, attendance, mondayAtt, mondayAttLoadin
 
   const monthEntries = allAttendance.filter((e) => e.date >= m1 && e.date <= m2);
 
-  const totalStrikes = VAS.reduce((sum, va) => {
+  const totalStrikes = activeVAs.reduce((sum, va) => {
     const e = monthEntries.filter((x) => x.va === va);
     const lates = e.filter((x) => x.late).length;
     // Only count short-notice Monday absences + all local absences (not verified leaves)
@@ -126,7 +129,7 @@ export default function VAsTab({ clients, attendance, mondayAtt, mondayAttLoadin
 
       {/* VA cards grid */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 12, marginBottom: 24 }}>
-        {VAS.map((va) => {
+        {activeVAs.map((va) => {
           const entries = monthEntries.filter((e) => e.va === va);
           const lates = entries.filter((e) => e.late).length;
           const absents = entries.filter((e) => e.absent && (e.shortNotice !== false)).length;
@@ -211,7 +214,7 @@ export default function VAsTab({ clients, attendance, mondayAtt, mondayAttLoadin
             Attendance log — {monthLabel}
           </span>
           <div style={{ display: "flex", gap: 4 }}>
-            {["All", ...VAS].map((v) => (
+            {["All", ...activeVAs].map((v) => (
               <button
                 key={v}
                 onClick={() => setFilterVa(v)}
