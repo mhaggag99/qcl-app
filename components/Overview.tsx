@@ -26,12 +26,13 @@ function resolveClient(mondayName: string, list: Client[]): string | null {
   return match ? match.name : null;
 }
 
-export default function Overview({ clients, rtData, setModal, onAddNote, compact }: {
+export default function Overview({ clients, rtData, setModal, onAddNote, compact, userRole }: {
   clients: Client[];
   rtData: { boardName: string; events: RoundtableEvent[] } | null;
   setModal: (m: { type: string; id: string }) => void;
   onAddNote: (clientId: string, text: string) => void;
   compact?: boolean;
+  userRole?: string;
 }) {
   const { D } = useTheme();
 
@@ -147,13 +148,13 @@ export default function Overview({ clients, rtData, setModal, onAddNote, compact
 
       {/* ── Right column: Calendar | (Inbox + Meeting Draft stacked) ── */}
       <div style={{ flex: 1, minWidth: 0, display: "flex", gap: 14, alignItems: "flex-start" }}>
-        {!DEMO && (
+        {!DEMO && userRole === "owner" && (
           <div style={{ flex: 1, minWidth: 0 }}>
             <CalendarPanel accent={D.green} />
           </div>
         )}
         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 14 }}>
-          {!DEMO && <InboxPanel />}
+          {!DEMO && userRole === "owner" && <InboxPanel />}
           <MeetingDraftPanel clients={clients} onAddNote={onAddNote} />
         </div>
       </div>

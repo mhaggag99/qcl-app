@@ -424,7 +424,7 @@ export default function Dashboard() {
 
       {/* Content */}
       <div key={tab} className="qcl-tab-content" style={{ padding: "24px 28px 8px", flex: 1, minHeight: 0, position: "relative", zIndex: 1 }}>
-        {tab === "overview" && <Overview clients={clients} rtData={rtData} setModal={setModal as (m: { type: string; id: string }) => void} onAddNote={addNote} />}
+        {tab === "overview" && <Overview clients={clients} rtData={rtData} setModal={setModal as (m: { type: string; id: string }) => void} onAddNote={addNote} userRole={user?.role} />}
         {tab === "clients" && <Clients clients={clients} setModal={setModal as (m: { type: string; id: string }) => void} onDelete={deleteClient} onStatusChange={changeStatus} rtData={rtData} onRefreshRt={loadRoundtable} rtLoading={rtLoading} />}
         {tab === "roundtable" && <RoundtableTab clients={clients} data={rtData} loading={rtLoading} error={rtError} onLoad={loadRoundtable} />}
         {tab === "vas" && <VAsTab clients={clients} attendance={attendance} mondayAtt={mondayAtt} mondayAttLoading={mondayAttLoading} onRefreshMondayAtt={loadMondayAtt} setModal={setModal as (m: { type: string }) => void} onDelAtt={delAtt} userVAs={userVAs.length > 0 ? userVAs : undefined} />}
@@ -434,7 +434,7 @@ export default function Dashboard() {
         )}
       </div>
 
-      {!DEMO && <QuickBar clients={clients} onAction={handleAIAction} setModal={setModal} setTab={setTab} />}
+      {!DEMO && user?.role === "owner" && <QuickBar clients={clients} onAction={handleAIAction} setModal={setModal} setTab={setTab} />}
 
       {showSettings && <UserSettingsModal userName={user?.name || ""} onClose={() => setShowSettings(false)} />}
 

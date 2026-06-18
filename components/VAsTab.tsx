@@ -47,7 +47,7 @@ export default function VAsTab({ clients, attendance, mondayAtt, mondayAttLoadin
   const mondayEntries = useMemo(() => mondayAtt.map(mondayToEntry), [mondayAtt]);
   const allAttendance = useMemo(() => {
     const seen = new Set<string>();
-    return [...mondayEntries, ...attendance.filter((e) => vasSet.has(e.va))]
+    return [...mondayEntries.filter((e) => vasSet.has(e.va)), ...attendance.filter((e) => vasSet.has(e.va))]
       .filter((e) => { if (seen.has(e.id)) return false; seen.add(e.id); return true; });
   }, [mondayEntries, attendance]);
 
