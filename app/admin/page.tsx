@@ -412,30 +412,30 @@ export default function AdminPage() {
                       {new Date(u.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit" })}
                     </td>
                     <td style={s.td}>
-                      {u.role !== "admin" && (
+                      {u.role !== "owner" && (
                         <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 4 }}>
-                          <button style={actionBtn(C.green)}
-                            onClick={() => { setImportTarget(u); setImportPmName(u.name); setImportVaNames(""); setImportResult(null); }}>
-                            Import Monday
-                          </button>
-                          <button style={actionBtn(C.blue)}
-                            onClick={() => { setTokenTarget(u); setTokenValue(""); setTokenSaved(false); }}>
-                            Set Token
-                          </button>
-                          <button style={actionBtn(C.amber)}
-                            onClick={() => { setPasswordTarget(u); setNewPassword(""); setPasswordSaved(false); }}>
-                            Reset PW
-                          </button>
-                          {u.role !== "owner" && (
+                          {u.role !== "admin" && (
                             <>
-                              <button style={actionBtn(C.purple)} onClick={() => handleToggleRole(u)}>
-                                {u.role === "member" ? "Make Admin" : "Make Member"}
+                              <button style={actionBtn(C.green)}
+                                onClick={() => { setImportTarget(u); setImportPmName(u.name); setImportVaNames(""); setImportResult(null); }}>
+                                Import Monday
                               </button>
-                              <button style={actionBtn(C.red)} onClick={() => setDeleteTarget(u)}>
-                                Delete
+                              <button style={actionBtn(C.blue)}
+                                onClick={() => { setTokenTarget(u); setTokenValue(""); setTokenSaved(false); }}>
+                                Set Token
+                              </button>
+                              <button style={actionBtn(C.amber)}
+                                onClick={() => { setPasswordTarget(u); setNewPassword(""); setPasswordSaved(false); }}>
+                                Reset PW
                               </button>
                             </>
                           )}
+                          <button style={actionBtn(C.purple)} onClick={() => handleToggleRole(u)}>
+                            {u.role === "member" ? "Make Admin" : "Make Member"}
+                          </button>
+                          <button style={actionBtn(C.red)} onClick={() => setDeleteTarget(u)}>
+                            Delete
+                          </button>
                         </div>
                       )}
                     </td>
