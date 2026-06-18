@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser, hashPassword } from "@/lib/auth";
-import { deleteUser, getUserById, updateUserPassword, updateUserRole } from "@/lib/db";
+import { deleteUser, getUserById, updateUserPassword, updateUserRole, updateUserVip } from "@/lib/db";
 
 function requireAdmin(session: Awaited<ReturnType<typeof getSessionUser>>) {
   if (!session || session.role !== "admin") {
@@ -49,6 +49,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return NextResponse.json({ error: "Cannot change owner role" }, { status: 400 });
     }
     updateUserRole(id, body.role);
+  }
+
+  if (typeof body.vip === "boolean") {
+    updateUserVip(id, body.vip);
   }
 
   return NextResponse.json({ ok: true });

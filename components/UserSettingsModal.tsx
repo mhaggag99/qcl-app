@@ -5,9 +5,10 @@ import { useTheme } from "@/lib/theme";
 interface Props {
   onClose: () => void;
   userName: string;
+  canAccessPremium?: boolean;
 }
 
-export default function UserSettingsModal({ onClose, userName }: Props) {
+export default function UserSettingsModal({ onClose, userName, canAccessPremium }: Props) {
   const { D } = useTheme();
   const [mondayToken, setMondayToken] = useState("");
   const [saving, setSaving] = useState(false);
@@ -144,7 +145,7 @@ export default function UserSettingsModal({ onClose, userName }: Props) {
         </div>
 
         {/* Google Section */}
-        {process.env.NEXT_PUBLIC_GOOGLE_CONFIGURED !== "false" && (
+        {canAccessPremium && process.env.NEXT_PUBLIC_GOOGLE_CONFIGURED !== "false" && (
           <div>
             <div style={sectionTitle}>Google Account</div>
             {googleLoading ? (

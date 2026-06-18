@@ -8,6 +8,7 @@ interface AdminUser {
   email: string;
   name: string;
   role: "owner" | "member" | "admin";
+  vip: boolean;
   mondayConfigured: boolean;
   googleConnected: boolean;
   setupDone: boolean;
@@ -185,6 +186,15 @@ export default function AdminPage() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ role: newRole }),
+    });
+    loadUsers();
+  }
+
+  async function handleToggleVip(u: AdminUser) {
+    await fetch(`/api/admin/users/${u.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ vip: !u.vip }),
     });
     loadUsers();
   }
@@ -379,13 +389,22 @@ export default function AdminPage() {
                     </td>
                     <td style={{ ...s.td, color: C.muted }}>{u.email}</td>
                     <td style={s.td}>
-                      <span style={{
-                        padding: "3px 9px", borderRadius: 20, fontSize: 11, fontWeight: 600,
-                        background: `${roleColors[u.role] || C.muted}18`,
-                        border: `1px solid ${roleColors[u.role] || C.muted}35`,
-                        color: roleColors[u.role] || C.muted,
-                        textTransform: "capitalize",
-                      }}>{u.role}</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{
+                          padding: "3px 9px", borderRadius: 20, fontSize: 11, fontWeight: 600,
+                          background: `${roleColors[u.role] || C.muted}18`,
+                          border: `1px solid ${roleColors[u.role] || C.muted}35`,
+                          color: roleColors[u.role] || C.muted,
+                          textTransform: "capitalize",
+                        }}>{u.role}</span>
+                        {u.vip && (
+                          <span style={{
+                            padding: "2px 7px", borderRadius: 20, fontSize: 10, fontWeight: 700,
+                            background: "rgba(56,239,125,0.12)", border: "1px solid rgba(56,239,125,0.3)",
+                            color: C.green, letterSpacing: "0.04em",
+                          }}>VIP</span>
+                        )}
+                      </div>
                     </td>
                     <td style={{ ...s.td, fontWeight: 600, color: u.clientCount > 0 ? C.text : C.muted }}>
                       {u.role === "admin" ? <span style={{ color: C.muted }}>—</span> : u.clientCount}
@@ -429,6 +448,11 @@ export default function AdminPage() {
                                 Reset PW
                               </button>
                             </>
+                          )}
+                          {u.role === "member" && (
+                            <button style={actionBtn(u.vip ? C.red : C.green)} onClick={() => handleToggleVip(u)}>
+                              {u.vip ? "Remove VIP" : "Grant VIP"}
+                            </button>
                           )}
                           <button style={actionBtn(C.purple)} onClick={() => handleToggleRole(u)}>
                             {u.role === "member" ? "Make Admin" : "Make Member"}

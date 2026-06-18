@@ -12,6 +12,7 @@ export interface User {
   passwordHash: string;
   name: string;
   role: UserRole;
+  vip: boolean;
   createdAt: string;
 }
 
@@ -142,6 +143,8 @@ function initSchema(db: Database.Database): void {
   try { db.exec("ALTER TABLE monday_seen ADD COLUMN user_id TEXT NOT NULL DEFAULT ''"); } catch {}
   // Onboarding: track whether each PM has completed workspace setup
   try { db.exec("ALTER TABLE users ADD COLUMN setup_done INTEGER DEFAULT 0"); } catch {}
+  // VIP flag: grants Calendar, Gmail, and AI bot access to member PMs
+  try { db.exec("ALTER TABLE users ADD COLUMN is_vip INTEGER DEFAULT 0"); } catch {}
   // Per-user VA names (stored as JSON array)
   try { db.exec("ALTER TABLE user_settings ADD COLUMN va_names TEXT DEFAULT '[]'"); } catch {}
   // Auto-mark anyone who already has clients as setup complete
@@ -190,6 +193,7 @@ function rowToUser(row: Record<string, unknown>): User {
     passwordHash: row.password_hash as string,
     name: row.name as string,
     role: row.role as UserRole,
+    vip: row.is_vip === 1,
     createdAt: row.created_at as string,
   };
 }
@@ -245,6 +249,10 @@ export function updateUserPassword(id: string, passwordHash: string): void {
 
 export function updateUserRole(id: string, role: UserRole): void {
   getDb().prepare("UPDATE users SET role = ? WHERE id = ?").run(role, id);
+}
+
+export function updateUserVip(id: string, vip: boolean): void {
+  getDb().prepare("UPDATE users SET is_vip = ? WHERE id = ?").run(vip ? 1 : 0, id);
 }
 
 export function isSetupDone(userId: string): boolean {

@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
       email: u.email,
       name: u.name,
       role: u.role,
+      vip: u.vip,
       mondayConfigured: !!settings.mondayApiToken,
       googleConnected: !!settings.googleAccessToken,
       setupDone: isSetupDone(u.id),
